@@ -5,19 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>HDDatenbank</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
 <div id="tor" class="tor">
   <form id="tor-form" class="tor-karte" autocomplete="off">
     <h1 class="tor-titel">HDDatenbank</h1>
-    <p id="tor-text" class="tor-text">PIN eingeben</p>
-    <input id="tor-pin" class="tor-pin" type="password" inputmode="numeric" pattern="[0-9]*" placeholder="••••" maxlength="12" autocomplete="off">
-    <input id="tor-pin2" class="tor-pin versteckt" type="password" inputmode="numeric" pattern="[0-9]*" placeholder="wiederholen" maxlength="12" autocomplete="off">
-    <label class="tor-merken"><input id="tor-merken" type="checkbox" checked> angemeldet bleiben</label>
+    <p id="tor-text" class="tor-text">Passwort eingeben</p>
+    <input id="tor-pin" class="tor-pin" type="password" placeholder="Passwort" autocomplete="current-password">
+    <input id="tor-pin2" class="tor-pin versteckt" type="password" placeholder="wiederholen" autocomplete="new-password">
+    <p id="tor-warnung" class="tor-warnung versteckt">
+      Das Passwort verschlüsselt deine Daten. Es gibt kein Zurücksetzen:
+      ohne das Passwort sind sie unwiederbringlich verloren.
+    </p>
     <button class="knopf knopf-neon" type="submit">Weiter</button>
     <p id="tor-fehler" class="tor-fehler"></p>
+    <p id="tor-ablage" class="tor-ablage"></p>
   </form>
 </div>
 
@@ -34,6 +38,7 @@
       <button class="tab" data-ansicht="suche">Suche</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </nav>
+    <span id="abgleich" class="abgleich"></span>
     <button id="abmelden" class="knopf knopf-still">Abmelden</button>
   </header>
 
@@ -254,10 +259,59 @@
         </div>
       </section>
       <section class="block">
-        <h2 class="block-titel">PIN ändern</h2>
+        <h2 class="block-titel">Sicherung</h2>
+        <p class="hinweis" style="margin-top:0">
+          Der gesamte Bestand als eine Datei, <strong>unverschlüsselt und lesbar</strong>. Gedacht
+          zum Umziehen auf ein anderes Gerät und als Rückweg, falls einmal etwas schiefgeht.
+          Die Datei gehört nicht in eine Cloud und nicht in ein Repository.
+        </p>
         <div class="reihe">
-          <input id="pin-alt" class="feld" type="password" inputmode="numeric" placeholder="alte PIN">
-          <input id="pin-neu" class="feld" type="password" inputmode="numeric" placeholder="neue PIN">
+          <button id="sich-export" class="knopf knopf-still">Bestand sichern</button>
+          <button id="sich-import" class="knopf knopf-still">Bestand einlesen</button>
+          <input type="file" id="sich-datei" class="versteckt" accept="application/json">
+        </div>
+        <p id="sich-info" class="hinweis"></p>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Abgleich mit GitHub</h2>
+        <p class="hinweis" style="margin-top:0">
+          Ohne Abgleich liegen die Daten nur in diesem Browser. Mit Abgleich landen sie
+          <strong>verschlüsselt</strong> in einem privaten Repository und stehen auf jedem Gerät
+          zur Verfügung, auf dem du Passwort und Zugriffsschlüssel einträgst. GitHub sieht dabei
+          nur Kauderwelsch.
+        </p>
+        <p class="hinweis">
+          Der Zugriffsschlüssel ist ein fein abgestufter Token, der genau ein Recht braucht:
+          <code>Contents: Read and write</code> auf dieses eine Repository. Das Repository muss
+          <strong>privat</strong> sein.
+        </p>
+        <div class="reihe">
+          <input id="ab-besitzer" class="feld" type="text" placeholder="GitHub-Kontoname" style="flex:1;min-width:180px">
+          <input id="ab-repo" class="feld" type="text" placeholder="Repository für die Daten" style="flex:1;min-width:180px">
+        </div>
+        <div class="reihe" style="margin-top:8px">
+          <input id="ab-token" class="feld" type="password" placeholder="Zugriffsschlüssel" style="flex:1;min-width:220px">
+          <button id="ab-sichern" class="knopf knopf-neon">Verbinden</button>
+          <button id="ab-loesen" class="knopf knopf-still versteckt">Lösen</button>
+        </div>
+        <label class="dialog-schalter" style="margin-top:8px">
+          <input id="ab-merken" type="checkbox" checked> Schlüssel auf diesem Gerät merken
+          <span class="hinweis">(auf fremden Geräten abwählen — er gilt dann nur bis zum Schließen)</span>
+        </label>
+        <p id="ab-info" class="hinweis"></p>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Passwort ändern</h2>
+        <p class="hinweis" style="margin-top:0">
+          Das Passwort ist der Schlüssel zu deinen Daten, nicht nur eine Abfrage. Beim Ändern
+          wird alles neu verschlüsselt. <strong>Es gibt kein Zurücksetzen</strong>: ohne das
+          Passwort sind die Daten verloren.
+        </p>
+        <div class="reihe">
+          <input id="pin-neu" class="feld" type="password" placeholder="neues Passwort" autocomplete="new-password">
+          <input id="pin-neu2" class="feld" type="password" placeholder="wiederholen" autocomplete="new-password">
           <button id="pin-aendern" class="knopf knopf-neon">Ändern</button>
         </div>
         <p id="pin-info" class="hinweis"></p>
@@ -294,6 +348,6 @@
 
 <div id="toast" class="toast versteckt"></div>
 
-<script src="/app.js"></script>
+<script type="module" src="./app.js"></script>
 </body>
 </html>

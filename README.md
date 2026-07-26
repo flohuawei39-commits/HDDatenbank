@@ -1,35 +1,81 @@
 # HDDatenbank
 
-Persönliches Dashboard: Kalender, Aufgaben, Can-Protokoll, Fristen. Läuft lokal auf dem
-eigenen Rechner, ohne Cloud und ohne Fremdabhängigkeiten.
+Persönliches Dashboard: Kalender, Aufgaben, Can-Protokoll, Gemeinde-Akten, Fristen und
+Finanzen mit PDF-Import. Läuft vollständig im Browser, ohne Server.
 
-Stand: Stufe 1 bis 3. Kalender, Aufgaben, Can-Protokoll, Gemeinde-Akten, Fristen,
-Tagesmail und Finanzen mit PDF-Import sind fertig.
+Die Daten liegen verschlüsselt in einem privaten GitHub-Repository und stehen damit auf
+jedem Gerät zur Verfügung. Verschlüsselt und entschlüsselt wird ausschließlich im Browser;
+GitHub sieht nur Kauderwelsch.
 
-## Starten
+## Aufbau
 
-```powershell
-node server.js
-```
+| Wo | Was |
+| --- | --- |
+| Dieses Repository, öffentlich | Der Programmcode. Er enthält keine Daten und keine Geheimnisse. |
+| `HDDatenbank-daten`, privat | Der verschlüsselte Bestand. Wird von der App geschrieben. |
+| Browser (IndexedDB) | Lokaler Spiegel, damit die App sofort startet und offline läuft. |
 
-Dann `http://127.0.0.1:8790/` im Browser öffnen. Beim allerersten Aufruf wird die PIN
-festgelegt (4 bis 12 Ziffern). Der Server hört nur auf `127.0.0.1`, ist also aus dem
-Netzwerk nicht erreichbar.
+Es gibt keinen Server. `index.html` lädt `app.js`, das über `lib/routen.js` dieselben
+Aufrufe bedient, die früher an einen Node-Server gingen.
 
-## Autostart
+## Einrichten
 
-Rechtsklick auf `autostart-einrichten.ps1` → „Mit PowerShell ausführen". Danach startet
-der Server beim Anmelden unsichtbar und das Dashboard öffnet sich einmal im Browser.
+1. **Datenrepository anlegen.** Ein neues, **privates** Repository, zum Beispiel
+   `HDDatenbank-daten`. Es darf leer bleiben.
+2. **Zugriffsschlüssel erzeugen.** GitHub → Settings → Developer settings → Personal access
+   tokens → Fine-grained tokens. Nur dieses eine Repository auswählen, als Recht genügt
+   `Contents: Read and write`. Sonst nichts.
+3. **App öffnen**, Passwort festlegen, unter Einstellungen › Abgleich mit GitHub Kontoname,
+   Repository und Schlüssel eintragen.
 
-Wieder entfernen:
+Auf einem zweiten Gerät dieselbe Adresse öffnen und dasselbe Passwort samt Schlüssel
+eintragen. Der Bestand kommt dann von selbst.
 
-```powershell
-Unregister-ScheduledTask -TaskName "HDDatenbank" -Confirm:$false
-```
+## Passwort
+
+Das Passwort ist keine Abfrage, sondern der Schlüssel: daraus wird über PBKDF2 abgeleitet,
+womit AES-GCM ver- und entschlüsselt. Deshalb gibt es **kein Zurücksetzen**. Ohne das
+Passwort sind die Daten verloren, auch für jemanden mit vollem Zugriff auf das Repository.
+
+Solange kein Zugriffsschlüssel hinterlegt ist, bleibt alles auf dem Gerät und jedes Passwort
+ist erlaubt — auch das Startpasswort `HDD`. Sobald der Abgleich eingerichtet wird, verlangt
+die App mindestens zwölf Zeichen und weist kürzere ab.
+
+## Sicherung
+
+Unter Einstellungen › Sicherung liegt der gesamte Bestand als eine Datei. Sie ist
+**unverschlüsselt und lesbar** und ersetzt den früheren `data/`-Ordner: zum Umziehen auf ein
+anderes Gerät und als Rückweg, falls etwas schiefgeht. Sie gehört nicht in eine Cloud und
+nicht in ein Repository. Die `.gitignore` hält sie bewusst draußen.
+
+## Abgleich, offline, Konflikte
+
+Geschrieben wird über die Git-Data-Routen: alle geänderten Dateien landen in einem einzigen
+Commit, und das Aktualisieren der Zweigreferenz läuft ohne `force`. Genau daran scheitert ein
+veralteter Stand, und genau das ist die Konflikterkennung.
+
+- **Ohne Netz** wird normal weitergearbeitet; die Änderungen sammeln sich im lokalen Spiegel
+  und gehen beim nächsten Mal hoch.
+- **Bei einem Konflikt** — zwei Geräte haben unabhängig geschrieben — wird nichts
+  überschrieben. Es erscheint eine Gegenüberstellung beider Stände, und du entscheidest.
+  Automatisch zusammengeführt wird bewusst nicht: bei widersprechenden Einträgen trifft das
+  zuverlässig die falsche Wahl.
+- Ein Klick auf die Statusanzeige oben rechts gleicht von Hand ab.
+
+## Startseite
+
+Sieben Kacheln: Fristen, Heute, Morgen, Offene Aufgaben, Finanzen, Can und Gemeinden. Unter
+Einstellungen › Startseite anordnen liegt ein verkleinertes Abbild: Kachel am Griff `≡`
+anfassen und ziehen, oder über die Knöpfe `‹ ›` die Spalte wechseln, `⬆ ⬇` verschieben,
+`⊙` aus- und einblenden.
+
+Drei Vorlagen: **Signalzeile oben** (Vorgabe), **Dreispalter**, **Arbeitsfläche mit
+Randleiste**. Am Rechner scrollt die Startseite nicht — jede Kachel hat eine Höhengrenze und
+scrollt bei Bedarf für sich. Unter 900 Pixel Breite fällt sie auf eine Spalte zurück.
 
 ## Schnelleingabe
 
-Eine Zeile statt Formular. Beispiele:
+Eine Zeile statt Formular:
 
 ```
 morgen 14 Uhr Zahnarzt !hoch #Privat
@@ -40,7 +86,7 @@ jeden montag Sport
 monatlich 1.9. Versicherung !frist
 ```
 
-Erkannt werden: `heute`, `morgen`, `übermorgen`, Wochentage, `nächsten freitag`, `3.8.`,
+Erkannt werden `heute`, `morgen`, `übermorgen`, Wochentage, `nächsten freitag`, `3.8.`,
 `26.07.2026`, `14 Uhr`, `14:30`, `bis <Datum>`, `!hoch` `!mittel` `!gering`, `!frist`,
 `#Kategorie`, `täglich` `wöchentlich` `monatlich` `jährlich` `jeden <Wochentag>`.
 
@@ -48,175 +94,88 @@ Vor dem Speichern kommt immer eine Vorschau — es wird nichts still geraten.
 
 ## Tierschutzzentrum
 
-Je Gemeinde eine Akte mit Ansprechpartner, Stand (Erstkontakt, Im Gespräch, Antrag läuft,
-Zusage, Absage), chronologischem Verlauf, Aufgaben und Dateien. Die Übersicht sortiert nach
-Stand und zeigt, seit wie vielen Tagen sich nichts bewegt hat.
+Je Gemeinde eine Akte mit Ansprechpartner, Stand, chronologischem Verlauf, Aufgaben und
+Dokumenten.
 
-**Ein Datum ist bei Aufgaben freiwillig.** Mit Datum verhält sich eine Aufgabe wie eine Frist:
-sie erscheint ab 14 Tagen vorher in der Signalzeile der Startseite und in der Tagesmail. Ohne
-Datum steht sie nur in der Akte und in der Gemeinden-Kachel der Startseite. Dort ist jede
-Gemeinde eine Leiste, die sich aufklappen lässt; rechts steht die Zahl offener Aufgaben, und
-wenn keine offen ist, wie bisher der Stillstand. Abhaken geht direkt aus der Kachel.
+**Ein Datum ist bei Aufgaben freiwillig.** Mit Datum erscheint die Aufgabe ab 14 Tagen vorher
+in der Signalzeile und in der Tagesmail. Ohne Datum steht sie nur in der Akte und in der
+Gemeinden-Kachel der Startseite. Dort ist jede Gemeinde eine aufklappbare Leiste; rechts steht
+die Zahl offener Aufgaben, sonst wie bisher der Stillstand.
 
-Im Datenmodell heißt das Feld weiterhin `fristen` — umbenannt wurde nur die Oberfläche, damit
-der Bestand keine Migration braucht.
+**Dokumente werden gelesen, nicht gespeichert.** Ein PDF wird eingelesen, der Text landet in
+der Akte, die Datei wird verworfen. Der Text ist danach durchsuchbar, die Suche findet also
+auch innerhalb von Förderbescheiden. Eingescannte Schreiben haben keine Textebene und liefern
+nichts — das steht dann auch so in der Liste.
 
-Hochgeladene Dateien werden nach `dokumente/<Gemeinde-ID>/` kopiert, nicht nur verlinkt.
-Verschiebst du das Original, bleibt die Akte vollständig.
+Im Datenmodell heißt das Aufgabenfeld weiterhin `fristen`; umbenannt wurde nur die Oberfläche,
+damit der Bestand keine Migration braucht.
 
 ## Tagesmail
 
 Eine Mail pro Tag über Web3Forms mit heute, morgen, in sieben Tagen und allen Fristen der
-nächsten 14 Tage — aus Kalendereinträgen *und* Gemeinde-Akten. Steht nichts an, wird auch
-nichts verschickt.
+nächsten 14 Tage, aus Kalendereinträgen und Gemeinde-Akten. Steht nichts an, wird nichts
+verschickt.
 
-Einzurichten unter Einstellungen: Empfänger, Uhrzeit, Zugangsschlüssel, Haken bei
-„Tagesmail verschicken". Vor dem ersten Versand lohnt „Vorschau ansehen".
-
-**Wichtig zur Arbeitsweise:** Web3Forms lehnt Aufrufe vom Server im Gratistarif mit
-403 ab — die Schnittstelle ist für den Browser gedacht. Deshalb entscheidet der Server
-nur, *wann* die Mail dran ist (`GET /api/mail/faellig`); abgeschickt wird sie von der
-geöffneten Dashboard-Seite, die anschließend zurückmeldet (`POST /api/mail/quittung`).
-Erst nach erfolgreicher Rückmeldung gilt der Tag als erledigt.
-
-Praktische Folge: die Mail geht raus, sobald das Dashboard geöffnet ist. Der Autostart
-öffnet es bei jeder Anmeldung. War es um 07:00 zu, kommt sie beim nächsten Öffnen und
-ist im Text als nachträglich gekennzeichnet. Verpasste Tage werden nicht einzeln
-aufgerollt — es kommt eine Mail mit dem aktuellen Stand.
-
-Zwei offene Tabs lösen keine zwei Mails aus: ein Auftrag ist zwei Minuten gesperrt,
-und ein gemeldeter Fehlschlag gibt ihn sofort wieder frei.
-
-Der Zugangsschlüssel liegt in `data/config.json`. Wer ihn dort nicht haben will, setzt
-stattdessen die Umgebungsvariable `HDD_WEB3FORMS_KEY`; sie hat Vorrang.
+Verschickt wird aus der geöffneten Seite heraus — Web3Forms lehnt serverseitige Aufrufe im
+Gratistarif mit 403 ab. Praktische Folge: die Mail geht raus, sobald das Dashboard offen ist.
+War es um 07:00 zu, kommt sie beim nächsten Öffnen und ist als nachträglich gekennzeichnet.
 
 ## Finanzen
 
-Kontoauszüge als PDF einlesen, unterstützt sind **N26** und **Wise**. Ablauf: Datei
-wählen, Kontrollansicht prüfen, angehakte Buchungen übernehmen. Ohne diesen Schritt
-wird nichts gespeichert.
-
-**Die PDF-Datei wird gelesen und sofort verworfen.** Gespeichert werden nur die
-erkannten Buchungen und eine Prüfsumme der Datei, damit ein zweiter Import derselben
-Datei auffällt. Kontoauszüge liegen also kein zweites Mal auf der Platte.
+Kontoauszüge als PDF einlesen, unterstützt sind **N26** und **Wise**. Datei wählen,
+Kontrollansicht prüfen, angehakte Buchungen übernehmen. Ohne diesen Schritt wird nichts
+gespeichert. Die Datei wird gelesen und sofort verworfen; gespeichert werden nur die
+erkannten Buchungen und eine Prüfsumme zur Doppelerkennung.
 
 Jeder Import kontrolliert sich selbst gegen die Zahlen im Auszug:
 
-- **N26** nennt alten Kontostand, Summe eingehend, Summe ausgehend und neuen Kontostand.
-  Geprüft wird, ob alter Stand plus Summe den neuen Stand ergibt.
-- **Wise** nennt keinen Anfangsstand, führt aber je Zeile einen laufenden Saldo. Geprüft
-  wird die Kette: Saldo minus Betrag muss den Saldo der Vorzeile ergeben. Bricht sie,
-  fehlt eine Buchung.
+- **N26** nennt alten Kontostand, Summen und neuen Kontostand. Geprüft wird, ob die Rechnung
+  aufgeht.
+- **Wise** nennt keinen Anfangsstand, führt aber je Zeile einen laufenden Saldo. Geprüft wird
+  die Kette: bricht sie, fehlt eine Buchung.
 
-Das Ergebnis steht als Ampel über der Kontrollansicht. Rot heißt nicht „Import
-unmöglich", sondern „hier stimmt etwas nicht, sieh es dir an".
-
-### Kategorien und Regeln
-
-N26 liefert je Buchung eine eigene Kategorie mit, die als Vorschlag übernommen wird.
-Wise liefert keine. Ordnest du eine Buchung selbst zu, kannst du ein Textstück angeben
-(etwa `REWE`) — daraus entsteht eine Regel, die bei künftigen Importen automatisch greift.
-Eigene Regeln haben Vorrang vor der Kategorie aus dem Auszug.
+Das Ergebnis steht als Ampel über der Kontrollansicht. Rot heißt nicht „Import unmöglich",
+sondern „hier stimmt etwas nicht, sieh es dir an".
 
 Eigene Kategorien legst du dort an, wo sie fehlen: im Auswahlfeld jeder Buchung und in jeder
-Zeile der Importkontrolle steht `+ neue Kategorie …`. Die Farbe kommt reihum aus der
-Neonpalette. Umbenennen, umfärben und löschen geht unter Einstellungen › Kategorien (Finanzen);
-gelöscht wird nur, was an keiner Buchung mehr hängt.
+Zeile der Importkontrolle steht `+ neue Kategorie …`. Verwaltet werden sie unter
+Einstellungen › Kategorien (Finanzen). Geld zwischen eigenen Konten als „Umbuchung" markieren
+— es zählt dann in keiner Summe mit.
 
-Über „Regeln" lassen sich bestehende Regeln ansehen, löschen und nachträglich auf alle
-Buchungen ohne Kategorie anwenden.
-
-### Umbuchungen und Bereiche
-
-Geld, das du zwischen N26 und Wise verschiebst, ist keine Einnahme und keine Ausgabe.
-Solche Buchungen als „Umbuchung" markieren — sie erscheinen weiter in der Liste, zählen
-aber in keiner Summe mit. Jede Buchung ist zusätzlich privat oder geschäftlich, mit
-eigenem Filter in der Übersicht.
-
-### Was der Import nicht kann
-
-- Nur N26 und Wise. Andere Banken brauchen einen eigenen Leser.
-- Nur Text-PDFs, keine eingescannten Auszüge.
-- Fremdwährungen bei Wise werden mit dem Betrag übernommen, der im Auszug steht;
-  es wird nicht umgerechnet.
+**Was der Import nicht kann:** nur N26 und Wise, nur Text-PDFs ohne Scan, und Fremdwährungen
+bei Wise werden mit dem Betrag aus dem Auszug übernommen ohne Umrechnung.
 
 ## Aussehen
 
-Drei Entwürfe, umschaltbar unter Einstellungen:
-
-- **Neonkante** — mattschwarz, kompakt, Farbe ausschließlich als Rand.
-- **Ruhige Karten** — hellerer Grafitgrund, mehr Luft, größere Schrift, gedämpfte Ränder.
-- **Linie** — tiefes Schwarz, keine Kartenflächen, nur Haarlinien und Typografie.
-
-## Startseite anordnen
-
-Die Startseite besteht aus sieben Kacheln: Fristen, Heute, Morgen, Offene Aufgaben, Finanzen,
-Can und Gemeinden. Unter Einstellungen › Startseite anordnen liegt ein verkleinertes Abbild:
-Kachel am Griff `≡` anfassen und ziehen, oder über die Knöpfe `‹ ›` die Spalte wechseln,
-`⬆ ⬇` in der Spalte verschieben, `⊙` aus- und einblenden. Gespeichert wird sofort.
-
-Drei Vorlagen als Ausgangspunkt:
-
-- **Signalzeile oben** (Vorgabe) — Fristen breit über die volle Breite, darunter drei Spalten.
-- **Dreispalter** — drei gleichwertige Spalten, nichts sticht heraus.
-- **Arbeitsfläche mit Randleiste** — links der Tag, Aufgaben über die volle Breite, rechts eine
-  schmale Leiste.
-
-Am Rechner scrollt die Startseite nicht: jede Kachel hat eine Höhengrenze und scrollt bei Bedarf
-für sich. Unter 900 Pixel Breite fällt sie auf eine Spalte und normales Seitenscrollen zurück —
-sieben Kacheln passen am Handy nicht in ein Bild.
-
-## Daten
-
-| Ort | Inhalt |
-| --- | --- |
-| `data/entries.json` | Kalendereinträge und Kategorien |
-| `data/tasks.json` | Aufgaben |
-| `data/gemeinden.json` | Gemeinde-Akten mit Verlauf und Fristen |
-| `data/finanzen.json` | Buchungen, Finanzkategorien, Regeln, Importverlauf |
-| `data/config.json` | PIN-Hash, Thema, Mail-Einstellungen, Backup-Stand |
-| `data/sessions.json` | offene Anmeldungen |
-| `dokumente/<Gemeinde-ID>/` | hochgeladene Dateien |
-| `backups/JJJJ-MM-TT/` | tägliche Kopie, die letzten 30 Tage |
-
-`data/` gehört nicht in eine Versionsverwaltung: dort liegen PIN-Hash und
-Mail-Zugangsschlüssel.
-
-Für einen Probelauf ohne Berührung der echten Daten lässt sich mit der Umgebungsvariable
-`HDD_BASIS` ein anderer Ordner für `data/`, `dokumente/` und `backups/` setzen.
-
-Das Backup wird beim Serverstart angelegt, einmal pro Tag. Läuft der Rechner tagelang
-durch, entsteht auch nur ein Stand — dann hilft ein Neustart des Servers.
+Drei Entwürfe, umschaltbar unter Einstellungen: **Neonkante** (mattschwarz, kompakt, Farbe nur
+als Rand), **Ruhige Karten** (hellerer Grund, mehr Luft), **Linie** (tiefes Schwarz, nur
+Haarlinien und Typografie).
 
 ## Prüfen
 
-```powershell
-node --check server.js
-node lib/selbsttest.js
+```bash
+npm test
 ```
 
-Der Selbsttest legt seine Daten in einem eigenen Ordner im Temp-Verzeichnis an und
-rührt den Echtbestand nicht an.
+217 Prüfungen: Datumsrechnung, Serien, Schnelleingabe, Suche, Kontoauszüge beider Banken,
+Verschlüsselung, Passwortregel, Startseiten-Layout und Gemeinde-Dokumente. Der Bestand liegt
+dabei nur im Speicher; der Test kann nichts außerhalb des Prozesses anfassen.
 
-Beim ersten Start werden die Abhängigkeiten gebraucht:
+Örtlich ausprobieren:
 
-```powershell
-npm install
+```bash
+python -m http.server 8790
 ```
 
-Einzige Fremdabhängigkeit ist `pdfjs-dist` von Mozilla für das Auslesen der
-Kontoauszüge. Sie läuft lokal, ohne Internet.
+## Grenzen
 
-## Grenzen des aktuellen Stands
-
-- Die PIN schützt lokal wenig. Vor einem Fernzugriff muss sie durch ein richtiges
-  Passwort ersetzt werden; die Anmeldung liegt dafür gekapselt in `lib/auth.js`.
-- Die Tagesmail geht nur raus, wenn das Dashboard im Browser offen ist. Soll sie
-  unabhängig davon laufen, braucht es einen Maildienst für Serverbetrieb (Brevo, Resend)
-  oder SMTP über ein eigenes Postfach — beides wäre ein Austausch von `lib/mail.js`
-  und dem Versandteil in `public/app.js`.
+- **Kein Zurücksetzen des Passworts.** Das ist der Preis dafür, dass GitHub die Daten nicht
+  lesen kann.
+- Der Zugriffsschlüssel liegt im Browserspeicher, wenn „merken" angehakt ist. Auf fremden
+  Geräten abwählen; er gilt dann nur bis zum Schließen.
+- Die Tagesmail geht nur raus, wenn die Seite offen ist.
 - Serien werden für die Anzeige berechnet, nicht gespeichert. Eine einzelne Ausnahme
-  („dieser eine Termin fällt aus") ist noch nicht vorgesehen, nur abhaken.
-- Der PDF-Import kennt nur N26 und Wise. Ändert eine der beiden ihr Auszugsformat,
-  bricht der jeweilige Leser in `lib/banken.js` und muss angepasst werden. Die
-  Selbstkontrolle würde das melden, statt es still zu verschlucken.
+  („dieser eine Termin fällt aus") ist nicht vorgesehen, nur abhaken.
+- Der PDF-Import kennt nur N26 und Wise. Ändert eine der beiden ihr Format, bricht der
+  jeweilige Leser in `lib/banken.js`. Die Selbstkontrolle meldet das, statt es zu verschlucken.
+- Zusammengeführt wird bei Konflikten nicht, nur gewählt.

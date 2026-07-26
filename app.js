@@ -1,6 +1,15 @@
-'use strict';
+/* HDDatenbank — Oberflaeche. Kein Framework, bewusst nur DOM.
 
-/* HDDatenbank — Oberflaeche. Kein Framework, bewusst nur DOM und fetch. */
+   Frueher lief alles ueber fetch gegen einen Node-Server. Der ist weg; die
+   Aufrufe gehen jetzt an lib/routen.js im selben Fenster. Die Pfade und
+   Rueckgaben sind dieselben geblieben, deshalb steht der Rest dieser Datei
+   praktisch unveraendert da.                                                */
+
+import { ruf, auszugLesen, dokumentLesen } from './lib/routen.js';
+import { alles as storeAlles } from './lib/store.js';
+import * as sync from './lib/sync.js';
+import * as github from './lib/github.js';
+import * as spiegel from './lib/spiegel.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -39,18 +48,15 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (z) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[z]
 ));
 
+/* Derselbe Zuschnitt wie frueher die HTTP-Hilfe: Pfad rein, Daten raus,
+   ein Fehlerfeld in der Antwort wird zur Ausnahme. Nur ohne Netz dazwischen. */
 const api = async (pfad, optionen = {}) => {
-  const antwort = await fetch(pfad, {
-    ...optionen,
-    headers: { 'Content-Type': 'application/json', 'X-HDD': '1', ...(optionen.headers || {}) }
-  });
-  const daten = await antwort.json().catch(() => ({}));
-  if (!antwort.ok) throw new Error(daten.fehler || `Fehler ${antwort.status}`);
-  if (daten.fehler) throw new Error(daten.fehler);
+  const daten = await ruf(optionen.method || 'GET', pfad, optionen.koerper || {});
+  if (daten && daten.fehler) throw new Error(daten.fehler);
   return daten;
 };
 
-const post = (pfad, koerper) => api(pfad, { method: 'POST', body: JSON.stringify(koerper || {}) });
+const post = (pfad, koerper) => api(pfad, { method: 'POST', koerper: koerper || {} });
 const del = (pfad) => api(pfad, { method: 'DELETE' });
 
 const toast = (nachricht, fehler = false) => {
@@ -88,16 +94,46 @@ const relativ = (tage) => {
   return `in ${Math.abs(tage)} Tagen`;
 };
 
-// ---------------------------------------------------------------- Anmeldung
+/* ---------------------------------------------------------------- Anmeldung
 
-const torZeigen = (eingerichtet) => {
+   Das Passwort ist kein Tuersteher mehr, sondern der Schluessel selbst: aus ihm
+   wird abgeleitet, womit die Daten ver- und entschluesselt werden. Ein falsches
+   Passwort scheitert deshalb nicht an einer Pruefung, sondern daran, dass sich
+   die Daten nicht entschluesseln lassen. Es gibt kein Zuruecksetzen.        */
+
+const ABLAGE_SCHLUESSEL = 'hdd_ablage';
+
+/** Zugangsdaten der Fernablage. Der Token liegt hier, das Passwort nie. */
+const ablageHolen = () => {
+  for (const speicher of [localStorage, sessionStorage]) {
+    try {
+      const roh = speicher.getItem(ABLAGE_SCHLUESSEL);
+      if (roh) return JSON.parse(roh);
+    } catch { /* Speicher gesperrt, dann eben ohne */ }
+  }
+  return null;
+};
+
+const ablageSetzen = (wert, merken) => {
+  localStorage.removeItem(ABLAGE_SCHLUESSEL);
+  sessionStorage.removeItem(ABLAGE_SCHLUESSEL);
+  if (!wert) return;
+  (merken ? localStorage : sessionStorage).setItem(ABLAGE_SCHLUESSEL, JSON.stringify(wert));
+};
+
+const torZeigen = (ersteEinrichtung) => {
   $('#tor').classList.remove('versteckt');
   $('#app').classList.add('versteckt');
-  $('#tor-text').textContent = eingerichtet
-    ? 'PIN eingeben'
-    : 'Ersteinrichtung: PIN festlegen (4 bis 12 Ziffern)';
-  $('#tor-pin2').classList.toggle('versteckt', eingerichtet);
-  $('#tor-form').dataset.modus = eingerichtet ? 'login' : 'setup';
+  const ablage = ablageHolen();
+  $('#tor-text').textContent = ersteEinrichtung
+    ? 'Ersteinrichtung: Passwort festlegen'
+    : 'Passwort eingeben';
+  $('#tor-pin2').classList.toggle('versteckt', !ersteEinrichtung);
+  $('#tor-warnung').classList.toggle('versteckt', !ersteEinrichtung);
+  $('#tor-form').dataset.modus = ersteEinrichtung ? 'setup' : 'login';
+  $('#tor-ablage').textContent = ablage
+    ? `Abgleich mit ${ablage.besitzer}/${ablage.repo}`
+    : 'Nur auf diesem Gerät. Abgleich lässt sich in den Einstellungen einrichten.';
   $('#tor-pin').focus();
 };
 
@@ -109,6 +145,7 @@ const appZeigen = async () => {
   S.kalJahr = jetzt.getFullYear();
   S.kalMonat = jetzt.getMonth() + 1;
   await ansichtWechseln('start');
+  abgleichAnzeigen(sync.zustand);   // Ausgangszustand einmal hinschreiben
 
   mailWecker();
   setInterval(mailWecker, 60000);
@@ -118,29 +155,114 @@ $('#tor-form').addEventListener('submit', fangen(async (ereignis) => {
   ereignis.preventDefault();
   const fehlerFeld = $('#tor-fehler');
   fehlerFeld.textContent = '';
-  const pin = $('#tor-pin').value.trim();
+  const passwort = $('#tor-pin').value;
+  const ersteEinrichtung = $('#tor-form').dataset.modus === 'setup';
 
   try {
-    if ($('#tor-form').dataset.modus === 'setup') {
-      if (pin !== $('#tor-pin2').value.trim()) throw new Error('Die beiden PINs stimmen nicht überein.');
-      await post('/api/setup', { pin });
-    } else {
-      await post('/api/login', { pin, merken: $('#tor-merken').checked });
+    if (ersteEinrichtung && passwort !== $('#tor-pin2').value) {
+      throw new Error('Die beiden Passwörter stimmen nicht überein.');
     }
+    const ergebnis = await sync.starten({ passwort, ablage: ablageHolen() });
+    if (!ergebnis.ok) throw new Error(ergebnis.fehler);
+    if (ergebnis.hinweis) toast(`Ohne Verbindung gestartet: ${ergebnis.hinweis}`, true);
   } catch (fehler) {
     fehlerFeld.textContent = fehler.message;
     $('#tor-pin').select();
     return;
   }
+
   $('#tor-pin').value = '';
   $('#tor-pin2').value = '';
+  if (ersteEinrichtung) await sync.sichern('Erste Einrichtung');
   await appZeigen();
 }));
 
 $('#abmelden').addEventListener('click', fangen(async () => {
-  await post('/api/logout');
+  await sync.sichern('Vor dem Abmelden gesichert').catch(() => {});
+  await sync.abmelden();
   location.reload();
 }));
+
+// ---- Abgleichanzeige -------------------------------------------------------
+
+const abgleichAnzeigen = (zustand) => {
+  const el = $('#abgleich');
+  if (!el) return;
+  if (zustand.letzterFehler) {
+    el.textContent = `⚠ ${zustand.letzterFehler}`;
+    el.className = 'abgleich abgleich-fehler';
+  } else if (zustand.schmutzig) {
+    el.textContent = '… wird gesichert';
+    el.className = 'abgleich abgleich-offen';
+  } else {
+    el.textContent = sync.hatFernablage() ? '✓ abgeglichen' : '✓ lokal gesichert';
+    el.className = 'abgleich';
+  }
+};
+
+sync.anmelden(abgleichAnzeigen);
+
+/* ---- Konflikt --------------------------------------------------------------
+
+   Zwei Geraete haben unabhaengig voneinander geschrieben. Es wird bewusst nicht
+   zusammengefuehrt: bei widersprechenden Eintraegen trifft das zuverlaessig die
+   falsche Wahl. Stattdessen beide Staende zeigen und den Menschen entscheiden
+   lassen. Bis dahin ist nichts ueberschrieben.                                */
+
+let konfliktLaeuft = false;
+
+const konfliktZeigen = fangen(async () => {
+  if (konfliktLaeuft) return;
+  konfliktLaeuft = true;
+  try {
+    const staende = await sync.konfliktStaende();
+    const zeile = (name, a, b) => `<tr><td>${esc(name)}</td><td class="${a.k !== b.k ? 'konflikt-anders' : ''}">${a.k}</td><td class="${a.k !== b.k ? 'konflikt-anders' : ''}">${b.k}</td></tr>`;
+    const felder = [['Einträge', 'eintraege'], ['Aufgaben', 'aufgaben'], ['Gemeinden', 'gemeinden'], ['Buchungen', 'buchungen']];
+
+    dialogOeffnen('Auf zwei Geräten geändert', `
+      <p class="hinweis" style="margin-top:0">
+        Seit dem letzten Abgleich wurde auch anderswo gespeichert. Es wurde nichts überschrieben.
+        Wähle, welcher Stand gelten soll — der andere geht dabei verloren.
+      </p>
+      <table class="konflikt-tabelle">
+        <thead><tr><th></th><th>dieses Gerät</th><th>bei GitHub</th></tr></thead>
+        <tbody>${felder.map(([n, s]) => zeile(n, { k: staende.meiner[s] }, { k: staende.fern[s] })).join('')}</tbody>
+      </table>
+      <div class="reihe" style="margin-top:12px">
+        <button class="knopf knopf-neon" id="konflikt-meiner">Dieses Gerät gilt</button>
+        <button class="knopf knopf-still" id="konflikt-fern">Stand von GitHub gilt</button>
+      </div>`, null, null);
+
+    $('#konflikt-meiner').addEventListener('click', fangen(async () => {
+      const r = await sync.meinenBehalten(staende.fernKopfSha);
+      if (!r.ok) throw new Error(r.fehler);
+      dialogSchliessen();
+      toast('Stand dieses Geräts übernommen');
+      await neuZeichnen();
+    }));
+
+    $('#konflikt-fern').addEventListener('click', fangen(async () => {
+      if (!confirm('Die Änderungen auf diesem Gerät gehen dabei verloren. Fortfahren?')) return;
+      await sync.fernenUebernehmen(staende);
+      dialogSchliessen();
+      toast('Stand von GitHub übernommen');
+      await neuZeichnen();
+    }));
+  } finally {
+    konfliktLaeuft = false;
+  }
+});
+
+$('#abgleich').addEventListener('click', fangen(async () => {
+  if (!sync.hatFernablage()) return;
+  const ergebnis = await sync.sichern('Von Hand abgeglichen');
+  if (ergebnis.konflikt) return konfliktZeigen();
+  if (!ergebnis.ok) throw new Error(ergebnis.fehler);
+  toast('Abgeglichen');
+}));
+
+// Ein Konflikt beim automatischen Sichern soll nicht still liegen bleiben.
+sync.beiKonflikt(() => konfliktZeigen());
 
 // ---------------------------------------------------------------- Navigation
 
@@ -156,7 +278,7 @@ const ansichtWechseln = async (name) => {
   if (name === 'tsz') await tszLaden();
   if (name === 'finanzen') await finanzenLaden();
   if (name === 'suche') { bereicheFuellen(); $('#such-feld').focus(); }
-  if (name === 'einstellungen') { await datenLaden(); katZeichnen(); await finkatLaden(); await einstellungenLaden(); }
+  if (name === 'einstellungen') { await datenLaden(); katZeichnen(); await finkatLaden(); ablageZeichnen(); await einstellungenLaden(); }
 };
 
 $$('.tab').forEach((tab) => tab.addEventListener('click', fangen(() => ansichtWechseln(tab.dataset.ansicht))));
@@ -517,6 +639,7 @@ const bereicheFuellen = () => {
   $('#such-bereich').innerHTML = [
     '<option value="alle">überall</option>',
     '<option value="aufgaben">nur Aufgaben</option>',
+    '<option value="dokumente">nur Gemeinde-Dokumente</option>',
     ...S.kategorien.map((k) => `<option value="${esc(k.id)}">nur ${esc(k.name)}</option>`)
   ].join('');
   if (aktuell) $('#such-bereich').value = aktuell;
@@ -541,7 +664,20 @@ const suchen = fangen(async () => {
     teile.push('<p class="treffer-gruppe">AUFGABEN</p>');
     teile.push(d.tasks.map(aufgabenZeile).join(''));
   }
-  const gesamt = d.entries.length + d.tasks.length;
+  // Der ausgelesene Text der Gemeinde-Dokumente, mit Ausschnitt um die Fundstelle.
+  if ((d.dokumente || []).length) {
+    teile.push('<p class="treffer-gruppe">GEMEINDE-DOKUMENTE</p>');
+    teile.push(d.dokumente.map((dok) => `
+      <div class="zeile zeile-dok" data-springe-gemeinde="${esc(dok.gemeindeId)}">
+        <span class="zeile-zeit">${esc(formatKurz(dok.datum))}</span>
+        <span class="zeile-text">
+          <strong>${esc(dok.name)}</strong>
+          <span class="treffer-ausschnitt">${esc(dok.ausschnitt)}</span>
+        </span>
+        <span class="zeile-marke">${esc(dok.gemeinde)}</span>
+      </div>`).join(''));
+  }
+  const gesamt = d.entries.length + d.tasks.length + (d.dokumente || []).length;
   $('#such-info').textContent = gesamt ? `${gesamt} Treffer für „${q}"` : `Keine Treffer für „${q}"`;
   $('#such-treffer').innerHTML = teile.join('');
 });
@@ -638,12 +774,117 @@ $('#finkat-anlegen').addEventListener('click', fangen(async () => {
   toast('Kategorie angelegt');
 }));
 
+/* ---- Sicherung als Datei ---------------------------------------------------
+
+   Frueher lag der Bestand als JSON auf der Platte und liess sich einfach
+   kopieren. Im Browser gibt es diesen Ordner nicht mehr, und die Daten haengen
+   am Browserprofil. Ohne einen Weg heraus waere ein Geraetewechsel eine
+   Sackgasse und ein Fehler nicht rueckgaengig zu machen.                     */
+
+const BESTAND_FORMAT = 1;
+
+$('#sich-export').addEventListener('click', fangen(async () => {
+  const bestand = { format: BESTAND_FORMAT, erstellt: new Date().toISOString(), dateien: storeAlles() };
+  const blob = new Blob([JSON.stringify(bestand, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `hddatenbank-sicherung-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  $('#sich-info').textContent = 'Gesichert. Die Datei ist lesbar — bitte entsprechend aufbewahren.';
+}));
+
+$('#sich-import').addEventListener('click', () => $('#sich-datei').click());
+
+$('#sich-datei').addEventListener('change', fangen(async (e) => {
+  const datei = e.target.files[0];
+  e.target.value = '';
+  if (!datei) return;
+
+  const roh = JSON.parse(await datei.text());
+  const dateien = roh.dateien || roh;   // auch eine nackte Sammlung annehmen
+  const zaehlen = (d) => [
+    (d['entries.json']?.entries || []).length,
+    (d['tasks.json']?.tasks || []).length,
+    (d['gemeinden.json']?.gemeinden || []).length,
+    (d['finanzen.json']?.buchungen || []).length
+  ];
+  const [e1, a1, g1, b1] = zaehlen(dateien);
+  if (!e1 && !a1 && !g1 && !b1) throw new Error('Die Datei enthält keinen erkennbaren Bestand.');
+
+  const [e0, a0, g0, b0] = zaehlen(storeAlles());
+  const frage = `Einlesen ersetzt den gesamten jetzigen Bestand.\n\n`
+    + `jetzt:  ${e0} Einträge, ${a0} Aufgaben, ${g0} Gemeinden, ${b0} Buchungen\n`
+    + `danach: ${e1} Einträge, ${a1} Aufgaben, ${g1} Gemeinden, ${b1} Buchungen\n\nFortfahren?`;
+  if (!confirm(frage)) return;
+
+  await sync.bestandErsetzen(dateien);
+  $('#sich-info').textContent = `Eingelesen: ${e1} Einträge, ${a1} Aufgaben, ${g1} Gemeinden, ${b1} Buchungen.`;
+  toast('Bestand eingelesen');
+  await neuZeichnen();
+}));
+
+// ---- Passwort und Fernablage ----------------------------------------------
+
 $('#pin-aendern').addEventListener('click', fangen(async () => {
-  await post('/api/pin', { alt: $('#pin-alt').value, neu: $('#pin-neu').value });
-  $('#pin-alt').value = '';
+  const neu = $('#pin-neu').value;
+  if (neu !== $('#pin-neu2').value) throw new Error('Die beiden Passwörter stimmen nicht überein.');
+  if (!confirm('Passwort wirklich ändern? Ohne das neue Passwort sind die Daten nicht mehr lesbar — es gibt kein Zurücksetzen.')) return;
+
+  const ergebnis = await sync.passwortWechseln(neu);
+  if (!ergebnis.ok) throw new Error(ergebnis.fehler);
   $('#pin-neu').value = '';
-  $('#pin-info').textContent = 'PIN geändert.';
-  toast('PIN geändert');
+  $('#pin-neu2').value = '';
+  $('#pin-info').textContent = 'Passwort geändert, alle Daten neu verschlüsselt.';
+  toast('Passwort geändert');
+}));
+
+const ablageZeichnen = () => {
+  const a = ablageHolen();
+  $('#ab-besitzer').value = a ? a.besitzer : '';
+  $('#ab-repo').value = a ? a.repo : '';
+  $('#ab-token').value = '';
+  $('#ab-token').placeholder = a ? 'hinterlegt — leer lassen, um ihn zu behalten' : 'Zugriffsschlüssel';
+  $('#ab-info').textContent = a
+    ? `Abgleich mit ${a.besitzer}/${a.repo}.`
+    : 'Kein Abgleich eingerichtet. Die Daten liegen nur auf diesem Gerät.';
+  $('#ab-loesen').classList.toggle('versteckt', !a);
+};
+
+$('#ab-sichern').addEventListener('click', fangen(async () => {
+  const alt = ablageHolen();
+  const besitzer = $('#ab-besitzer').value.trim();
+  const repo = $('#ab-repo').value.trim();
+  const token = $('#ab-token').value.trim() || (alt ? alt.token : '');
+  if (!besitzer || !repo || !token) throw new Error('Kontoname, Repository und Zugriffsschlüssel werden alle drei gebraucht.');
+
+  const geprueft = await github.pruefen({ token, besitzer, repo });
+  if (geprueft.warnung && !confirm(`${geprueft.warnung}\n\nTrotzdem einrichten?`)) return;
+
+  // Ab jetzt verlassen die Daten das Geraet — das Startpasswort reicht nicht mehr.
+  $('#ab-info').textContent = 'Verbindung steht. Prüfe das Passwort …';
+  ablageSetzen({ besitzer, repo, token, zweig: geprueft.zweig }, $('#ab-merken').checked);
+  sync.zustand.ablage = { besitzer, repo, token, zweig: geprueft.zweig };
+
+  const ergebnis = await sync.sichern('Abgleich eingerichtet');
+  if (!ergebnis.ok) {
+    ablageSetzen(alt, true);
+    sync.zustand.ablage = alt;
+    throw new Error(ergebnis.fehler);
+  }
+  ablageZeichnen();
+  toast('Abgleich eingerichtet');
+  $('#pin-info').textContent = 'Wichtig: Das Passwort schützt jetzt Daten außerhalb dieses Geräts. '
+    + 'Wechsle es unten auf mindestens 12 Zeichen, falls noch das Startpasswort gesetzt ist.';
+}));
+
+$('#ab-loesen').addEventListener('click', fangen(async () => {
+  if (!confirm('Abgleich lösen? Die Daten bleiben auf diesem Gerät und im Repository liegen, werden aber nicht mehr abgeglichen.')) return;
+  ablageSetzen(null);
+  sync.zustand.ablage = null;
+  ablageZeichnen();
+  toast('Abgleich gelöst');
 }));
 
 // ---------------------------------------------------------------- Dialog
@@ -912,7 +1153,7 @@ const uebersichtZeichnen = () => {
       ${g.letzterSchritt ? `<div class="karte-zeile karte-still">zuletzt: ${esc(g.letzterSchritt)}</div>` : ''}
       <div class="karte-zeile ${lange ? 'karte-warnung' : 'karte-still'}">${esc(still)}</div>
       ${frist}
-      <div class="karte-fuss">${g.anzahlSchritte} ${g.anzahlSchritte === 1 ? 'Schritt' : 'Schritte'} · ${g.anzahlDateien} ${g.anzahlDateien === 1 ? 'Datei' : 'Dateien'}${offen}</div>
+      <div class="karte-fuss">${g.anzahlSchritte} ${g.anzahlSchritte === 1 ? 'Schritt' : 'Schritte'} · ${g.anzahlDokumente} ${g.anzahlDokumente === 1 ? 'Dokument' : 'Dokumente'}${offen}</div>
     </article>`;
   }).join('');
 };
@@ -995,18 +1236,24 @@ const akteZeichnen = () => {
     </section>
 
     <section class="block">
-      <h2 class="block-titel">Dateien
-        <span class="block-neben"><button class="knopf knopf-still" data-tat="datei-neu">Datei ablegen</button></span>
+      <h2 class="block-titel">Dokumente
+        <span class="block-neben"><button class="knopf knopf-still" data-tat="datei-neu">PDF einlesen</button></span>
       </h2>
-      <input type="file" id="datei-feld" class="versteckt" multiple>
+      <input type="file" id="datei-feld" class="versteckt" accept="application/pdf" multiple>
+      <p class="hinweis" style="margin-top:0">
+        Das PDF wird gelesen und sofort verworfen, gespeichert wird nur der Text. Der ist
+        danach durchsuchbar. Eingescannte Schreiben haben keine Textebene und liefern nichts.
+      </p>
       <div class="liste">
-        ${(g.dateien || []).length ? g.dateien.map((d) => `
-          <div class="zeile" data-tat="datei" data-id="${esc(d.id)}">
+        ${(g.dokumente || []).length ? g.dokumente.map((d) => `
+          <div class="zeile dok-zeile ${d.leer ? 'zeile-warnung' : ''}" data-dok="${esc(d.id)}">
+            <span class="zeile-zeit">${esc(formatKurz(d.datum))}</span>
             <span class="zeile-text">${esc(d.name)}</span>
-            <span class="zeile-marke">${(d.groesse / 1024).toFixed(0)} KB</span>
-            <span class="zeile-marke" data-datei-laden="${esc(d.id)}">öffnen</span>
-            <span class="zeile-marke" data-datei-weg="${esc(d.id)}">löschen</span>
-          </div>`).join('') : leer('Keine Datei abgelegt.')}
+            <span class="zeile-marke">${d.leer ? 'kein Text erkannt' : `${(d.text || '').length} Zeichen`}</span>
+            <span class="zeile-marke" data-dok-weg="${esc(d.id)}">löschen</span>
+          </div>
+          <pre class="dok-text versteckt" data-dok-text="${esc(d.id)}">${esc(d.text || '')}</pre>`).join('')
+    : leer('Noch kein Dokument eingelesen.')}
       </div>
     </section>
 
@@ -1017,18 +1264,21 @@ $('#tsz-akte').addEventListener('click', fangen(async (e) => {
   const g = S.gemeinden.find((x) => x.id === S.akteId);
   if (!g) return;
 
-  const laden = e.target.closest('[data-datei-laden]');
-  if (laden) {
-    window.open(`/api/gemeinde/datei?gemeinde=${encodeURIComponent(g.id)}&id=${encodeURIComponent(laden.dataset.dateiLaden)}`, '_blank');
-    return;
-  }
-  const weg = e.target.closest('[data-datei-weg]');
+  const weg = e.target.closest('[data-dok-weg]');
   if (weg) {
-    const name = (g.dateien.find((d) => d.id === weg.dataset.dateiWeg) || {}).name || 'diese Datei';
-    if (!confirm(`„${name}" wirklich löschen? Die Datei wird von der Platte entfernt.`)) return;
-    await del(`/api/gemeinde/datei?gemeinde=${encodeURIComponent(g.id)}&id=${encodeURIComponent(weg.dataset.dateiWeg)}`);
-    toast('Datei gelöscht');
+    const name = (g.dokumente.find((d) => d.id === weg.dataset.dokWeg) || {}).name || 'dieses Dokument';
+    if (!confirm(`Den Text von „${name}" wirklich löschen?`)) return;
+    await del(`/api/gemeinde/dokument?gemeinde=${encodeURIComponent(g.id)}&id=${encodeURIComponent(weg.dataset.dokWeg)}`);
+    toast('Dokument gelöscht');
     return tszLaden();
+  }
+
+  // Klick auf die Zeile klappt den ausgelesenen Text auf.
+  const dok = e.target.closest('[data-dok]');
+  if (dok) {
+    const feld = $(`[data-dok-text="${CSS.escape(dok.dataset.dok)}"]`);
+    if (feld) feld.classList.toggle('versteckt');
+    return;
   }
 
   const tat = e.target.closest('[data-tat]');
@@ -1054,16 +1304,26 @@ $('#tsz-akte').addEventListener('click', fangen(async (e) => {
 $('#tsz-akte').addEventListener('change', fangen(async (e) => {
   if (e.target.id !== 'datei-feld') return;
   const g = S.gemeinden.find((x) => x.id === S.akteId);
-  for (const datei of [...e.target.files]) {
-    const antwort = await fetch(`/api/gemeinde/datei?gemeinde=${encodeURIComponent(g.id)}&name=${encodeURIComponent(datei.name)}`, {
-      method: 'POST',
-      headers: { 'X-HDD': '1', 'Content-Type': 'application/octet-stream' },
-      body: datei
+  const dateien = [...e.target.files];
+  e.target.value = '';
+
+  let leere = 0;
+  for (const datei of dateien) {
+    toast(`${datei.name} wird gelesen …`);
+    const gelesen = await dokumentLesen(await datei.arrayBuffer());
+    if (gelesen.fehler) throw new Error(`${datei.name}: ${gelesen.fehler}`);
+    if (gelesen.leer) leere += 1;
+    await post('/api/gemeinde/dokument', {
+      gemeindeId: g.id,
+      name: datei.name,
+      text: gelesen.text,
+      seiten: gelesen.seiten
     });
-    const ergebnis = await antwort.json().catch(() => ({}));
-    if (ergebnis.fehler) throw new Error(`${datei.name}: ${ergebnis.fehler}`);
   }
-  toast('Datei abgelegt');
+
+  toast(leere
+    ? `${dateien.length} gelesen, davon ${leere} ohne Textebene (vermutlich ein Scan)`
+    : `${dateien.length} ${dateien.length === 1 ? 'Dokument' : 'Dokumente'} eingelesen`, leere > 0);
   await tszLaden();
 }));
 
@@ -1355,12 +1615,7 @@ $('#fin-datei').addEventListener('change', fangen(async (e) => {
   e.target.value = '';
   for (const datei of dateien) {
     toast(`${datei.name} wird gelesen …`);
-    const antwort = await fetch(`/api/finanzen/pdf?name=${encodeURIComponent(datei.name)}`, {
-      method: 'POST',
-      headers: { 'X-HDD': '1', 'Content-Type': 'application/pdf' },
-      body: datei
-    });
-    const d = await antwort.json().catch(() => ({}));
+    const d = await auszugLesen(await datei.arrayBuffer(), datei.name);
     if (d.fehler) throw new Error(`${datei.name}: ${d.fehler}`);
     S.finKategorien = d.kategorien;
     importZeichnen(d);
@@ -1808,12 +2063,25 @@ const neuZeichnen = async () => {
 
 // ---------------------------------------------------------------- Start
 
+/* Es gibt keine Sitzung mehr, die man wiederherstellen koennte: ohne Passwort
+   im Speicher gibt es keinen Schluessel und damit keine lesbaren Daten. Beim
+   Laden steht also immer die Passwortabfrage. Zu klaeren ist nur, ob es sich um
+   die Ersteinrichtung handelt. */
+
 (async () => {
   try {
-    const status = await api('/api/status');
-    if (status.angemeldet) await appZeigen();
-    else torZeigen(status.eingerichtet);
+    const gespiegelt = await spiegel.standHolen();
+    const hatLokal = Boolean(gespiegelt.salz);
+    const hatFern = Boolean(ablageHolen());
+    torZeigen(!hatLokal && !hatFern);
   } catch (fehler) {
     $('#tor-fehler').textContent = fehler.message;
+    torZeigen(true);
   }
 })();
+
+// Vor dem Schliessen noch schnell wegschreiben, damit die letzten Sekunden
+// Tipperei nicht verloren gehen.
+window.addEventListener('beforeunload', () => {
+  if (sync.zustand.schmutzig) sync.sichern('Beim Schließen gesichert');
+});

@@ -5,6 +5,10 @@ data/
 dokumente/
 backups/
 
+# Sicherungsdateien sind unverschluesselt lesbar und enthalten alles.
+hddatenbank-sicherung-*.json
+hddatenbank-uebernahme-*.json
+
 node_modules/
 *.tmp
 *.log

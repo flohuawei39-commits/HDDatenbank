@@ -561,6 +561,47 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
 
 /* ---------------------------------------------------------- Mobil */
 
+/* ------------------------------------------------------ Abgleich und Tor */
+
+.abgleich { font-size: 12px; color: var(--text-still); white-space: nowrap; }
+.abgleich-offen { color: var(--neon-amber); }
+.abgleich-fehler { color: var(--neon-koralle); }
+
+.tor-warnung {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--neon-amber);
+  background: rgba(255, 180, 84, .07);
+  border: 1px solid rgba(255, 180, 84, .3);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+}
+.tor-ablage { font-size: 12px; color: var(--text-still); margin: 2px 0 0; text-align: center; }
+
+/* ------------------------------------------------------ Gemeinde-Dokumente */
+
+.dok-zeile { cursor: pointer; }
+.zeile-dok { align-items: flex-start; cursor: pointer; }
+.zeile-dok .zeile-text { display: flex; flex-direction: column; gap: 2px; }
+.treffer-ausschnitt { font-size: 12.5px; color: var(--text-still); line-height: 1.5; }
+.zeile-warnung { border-color: rgba(255, 180, 84, .4); }
+.dok-text {
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-schwach);
+  background: var(--bg-2);
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 4px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ------------------------------------------------------- Gemeinden-Kachel */
 
 .gem-block { display: flex; flex-direction: column; gap: 4px; }
@@ -672,3 +713,22 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
   .schnell { flex-wrap: wrap; }
   .schnell-feld { flex: 1 1 100%; }
 }
+
+/* ------------------------------------------------------------- Konflikt */
+
+.konflikt-tabelle { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.konflikt-tabelle th {
+  text-align: right;
+  font-weight: 500;
+  font-size: 11.5px;
+  letter-spacing: .05em;
+  color: var(--text-still);
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--rand);
+}
+.konflikt-tabelle th:first-child { text-align: left; }
+.konflikt-tabelle td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--rand); }
+.konflikt-tabelle td:first-child { text-align: left; color: var(--text-schwach); }
+.konflikt-anders { color: var(--neon-amber); font-weight: 600; }
+
+#abgleich { cursor: pointer; }

@@ -1,15 +1,14 @@
 {
   "name": "hddatenbank",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Persönliches Dashboard: Kalender, Aufgaben, Can-Protokoll, Gemeinde-Akten, Finanzen",
-  "main": "server.js",
+  "type": "module",
+  "description": "Persönliches Dashboard: Kalender, Aufgaben, Gemeinde-Akten, Finanzen. Läuft vollständig im Browser.",
   "scripts": {
-    "start": "node server.js",
     "test": "node lib/selbsttest.js",
-    "check": "node --check server.js && node --check public/app.js"
+    "start": "python -m http.server 8790"
   },
-  "dependencies": {
+  "devDependencies": {
     "pdfjs-dist": "^4.10.38"
   },
   "engines": {
