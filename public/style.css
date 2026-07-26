@@ -1,0 +1,674 @@
+/* HDDatenbank — mattschwarz, Neon ausschliesslich als Umrandung. */
+
+:root {
+  --bg: #0c0d0f;
+  --bg-2: #101215;
+  --karte: #14161a;
+  --karte-2: #191c21;
+  --rand: #24272d;
+  --rand-hell: #33373f;
+  --text: #dcdee3;
+  --text-schwach: #888e98;
+  --text-still: #636872;
+
+  --neon-gruen: #3ddc84;
+  --neon-cyan: #34e2e2;
+  --neon-magenta: #ff5fd2;
+  --neon-amber: #ffb454;
+  --neon-violett: #a988ff;
+  --neon-koralle: #ff7a6b;
+
+  --radius: 10px;
+  --schrift: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--schrift);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.versteckt { display: none !important; }
+
+code {
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12.5px;
+  color: var(--text-schwach);
+  background: var(--bg-2);
+  border: 1px solid var(--rand);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ---------------------------------------------------------- Neon-Umrandungen */
+
+.neon { border: 1px solid var(--ton); box-shadow: 0 0 10px -4px var(--ton); }
+.neon-gruen { --ton: var(--neon-gruen); }
+.neon-cyan { --ton: var(--neon-cyan); }
+.neon-magenta { --ton: var(--neon-magenta); }
+.neon-amber { --ton: var(--neon-amber); }
+.neon-violett { --ton: var(--neon-violett); }
+.neon-koralle { --ton: var(--neon-koralle); }
+
+/* ---------------------------------------------------------- Grundelemente */
+
+.knopf {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--karte-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, color .15s;
+}
+.knopf:hover { border-color: var(--rand-hell); }
+.knopf-neon { border-color: var(--neon-cyan); box-shadow: 0 0 10px -4px var(--neon-cyan); }
+.knopf-neon:hover { box-shadow: 0 0 14px -3px var(--neon-cyan); }
+.knopf-still { background: transparent; }
+.knopf-gefahr { border-color: var(--rand); color: var(--text-schwach); }
+.knopf-gefahr:hover { border-color: var(--neon-koralle); color: var(--neon-koralle); box-shadow: 0 0 10px -4px var(--neon-koralle); }
+
+.feld {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: 8px 11px;
+  min-width: 0;
+}
+.feld:focus { outline: none; border-color: var(--neon-cyan); box-shadow: 0 0 10px -4px var(--neon-cyan); }
+.feld-farbe { padding: 3px; width: 46px; cursor: pointer; }
+select.feld { cursor: pointer; }
+
+.reihe { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.hinweis { color: var(--text-still); font-size: 13px; margin: 8px 0 0; }
+
+/* ---------------------------------------------------------- Anmeldung */
+
+.tor { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.tor-karte {
+  width: min(360px, 100%);
+  background: var(--karte);
+  border: 1px solid var(--neon-cyan);
+  box-shadow: 0 0 24px -12px var(--neon-cyan);
+  border-radius: 14px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tor-titel { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: .04em; }
+.tor-text { margin: 0; color: var(--text-schwach); font-size: 13.5px; }
+.tor-pin {
+  font: inherit;
+  font-size: 24px;
+  letter-spacing: .5em;
+  text-align: center;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.tor-pin:focus { outline: none; border-color: var(--neon-gruen); box-shadow: 0 0 12px -4px var(--neon-gruen); }
+.tor-merken { color: var(--text-schwach); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.tor-fehler { margin: 0; color: var(--neon-koralle); font-size: 13px; min-height: 18px; }
+
+/* ---------------------------------------------------------- Kopf */
+
+.app { max-width: 1400px; margin: 0 auto; padding: 18px 16px 64px; }
+
+/* Nur die Startseite verzichtet aufs Seitenscrollen. Alle anderen Reiter
+   bleiben normal scrollbar — ein Kalender oder eine Buchungsliste gehoert
+   nicht in eine Hoehenbegrenzung. */
+body.start-aktiv { height: 100%; overflow: hidden; }
+body.start-aktiv .app { height: 100dvh; display: flex; flex-direction: column; padding-bottom: 16px; }
+body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+.kopf { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.kopf-marke { font-size: 16px; font-weight: 600; letter-spacing: .06em; color: var(--neon-cyan); }
+.kopf-marke span { color: var(--text-schwach); font-weight: 400; }
+.kopf-nav { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+
+.tab {
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text-schwach);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 6px 13px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--text); border-color: var(--rand); }
+.tab.aktiv { color: var(--text); border-color: var(--neon-cyan); box-shadow: 0 0 10px -4px var(--neon-cyan); }
+
+/* ---------------------------------------------------------- Schnelleingabe */
+
+.schnell { display: flex; gap: 8px; margin-bottom: 12px; }
+.schnell-feld {
+  flex: 1;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--karte);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: 10px 13px;
+}
+.schnell-feld:focus { outline: none; border-color: var(--neon-gruen); box-shadow: 0 0 12px -4px var(--neon-gruen); }
+
+.schnell-vorschau {
+  background: var(--karte);
+  border: 1px solid var(--neon-gruen);
+  box-shadow: 0 0 12px -6px var(--neon-gruen);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  font-size: 13.5px;
+}
+.schnell-vorschau .vp-zeile { color: var(--text-schwach); }
+.schnell-vorschau .vp-wert { color: var(--text); }
+.schnell-vorschau .vp-hinweis { color: var(--neon-amber); }
+.schnell-vorschau .reihe { margin-top: 10px; }
+
+/* ---------------------------------------------------------- Bloecke */
+
+.block {
+  background: var(--karte);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.block-warnung { border-color: var(--neon-koralle); box-shadow: 0 0 16px -8px var(--neon-koralle); }
+.block-titel { margin: 0 0 10px; font-size: 14px; font-weight: 600; letter-spacing: .03em; }
+.block-neben { color: var(--text-still); font-weight: 400; font-size: 13px; margin-left: 6px; }
+
+/* Startseite: drei Spalten plus eine Zeile ueber die volle Breite. Die Seite
+   selbst scrollt nicht — volle Kacheln scrollen fuer sich. */
+.start-raster {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+  flex: 1;
+}
+.start-voll { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.start-voll:empty { display: none; }
+.start-spalte { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+.start-spalte:empty { display: none; }
+
+#ansicht-start:not(.versteckt) { display: flex; flex-direction: column; min-height: 0; }
+.start-raster > * > .block { min-height: 0; display: flex; flex-direction: column; }
+.start-raster .block > .liste { overflow-y: auto; min-height: 0; }
+.start-raster .block > .liste::-webkit-scrollbar { width: 6px; }
+.start-raster .block > .liste::-webkit-scrollbar-thumb { background: var(--rand-hell); border-radius: 3px; }
+
+.liste { display: flex; flex-direction: column; gap: 7px; }
+.liste-leer { color: var(--text-still); font-size: 13px; padding: 2px 0; }
+
+/* ---------------------------------------------------------- Eintragszeilen */
+
+.zeile {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  background: var(--karte-2);
+  border: 1px solid var(--rand);
+  border-left: 2px solid var(--kat, var(--rand-hell));
+  border-radius: 8px;
+  padding: 8px 11px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.zeile:hover { border-color: var(--rand-hell); border-left-color: var(--kat, var(--rand-hell)); }
+.zeile-hoch { border-color: var(--neon-koralle); box-shadow: 0 0 10px -5px var(--neon-koralle); }
+.zeile-frist { border-color: var(--neon-amber); box-shadow: 0 0 10px -5px var(--neon-amber); }
+.zeile-dringend { border-color: var(--neon-koralle); box-shadow: 0 0 14px -4px var(--neon-koralle); }
+.zeile-erledigt { opacity: .45; }
+.zeile-erledigt .zeile-text { text-decoration: line-through; }
+
+.zeile-zeit { color: var(--text-schwach); font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 42px; }
+.zeile-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.zeile-marke { font-size: 11.5px; color: var(--text-still); border: 1px solid var(--rand); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.zeile-marke-neon { color: var(--ton); border-color: var(--ton); }
+.zeile-haken { background: transparent; border: 1px solid var(--rand-hell); border-radius: 5px; width: 18px; height: 18px; cursor: pointer; color: var(--neon-gruen); font-size: 11px; line-height: 1; padding: 0; flex: none; }
+.zeile-haken:hover { border-color: var(--neon-gruen); }
+
+.liste-dezent .zeile { background: transparent; border-color: transparent; border-left-color: var(--kat, var(--rand)); padding: 5px 9px; font-size: 13px; color: var(--text-schwach); }
+.liste-dezent .zeile:hover { background: var(--karte-2); }
+.liste-dezent .zeile-zeit { min-width: 58px; }
+
+/* ---------------------------------------------------------- Kalender */
+
+.kal-kopf { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.kal-titel { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+
+.kal-wochentage { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
+.kal-wochentage span { text-align: center; font-size: 11.5px; color: var(--text-still); letter-spacing: .08em; }
+
+.kal-gitter { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+
+.kal-tag {
+  min-height: 92px;
+  /* Ohne min-width:0 waechst die Zelle mit dem laengsten Termintext und sprengt das Raster. */
+  min-width: 0;
+  background: var(--karte);
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  padding: 6px 7px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: border-color .15s;
+}
+.kal-tag:hover { border-color: var(--rand-hell); }
+.kal-tag-fremd { opacity: .38; }
+.kal-tag-heute { border-color: var(--neon-cyan); box-shadow: 0 0 12px -5px var(--neon-cyan); }
+.kal-tag-gewaehlt { border-color: var(--neon-gruen); box-shadow: 0 0 12px -5px var(--neon-gruen); }
+.kal-tag-nr { font-size: 12px; color: var(--text-schwach); font-variant-numeric: tabular-nums; }
+.kal-tag-heute .kal-tag-nr { color: var(--neon-cyan); }
+
+.kal-pille {
+  font-size: 11.5px;
+  line-height: 1.35;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--rand);
+  border-left: 2px solid var(--kat, var(--rand-hell));
+  background: var(--karte-2);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kal-pille-frist { border-color: var(--neon-amber); }
+.kal-pille-hoch { border-color: var(--neon-koralle); }
+.kal-pille-aufgabe { background: transparent; color: var(--text-still); border-style: dashed; }
+.kal-pille-erledigt { opacity: .4; text-decoration: line-through; }
+.kal-pille-lauf { border-left-width: 2px; border-radius: 5px; }
+.kal-mehr { font-size: 11px; color: var(--text-still); }
+
+/* ---------------------------------------------------------- Aufgaben */
+
+.spalten { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: start; }
+.spalte { background: var(--karte); border: 1px solid var(--rand); border-radius: var(--radius); padding: 12px 13px; }
+.spalte[data-status="offen"] { border-top: 2px solid var(--neon-cyan); }
+.spalte[data-status="laeuft"] { border-top: 2px solid var(--neon-amber); }
+.spalte[data-status="erledigt"] { border-top: 2px solid var(--neon-gruen); }
+.spalte-titel { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text-schwach); letter-spacing: .04em; }
+
+/* ---------------------------------------------------------- Suche */
+
+.such-kopf { display: flex; gap: 8px; margin-bottom: 10px; }
+.such-kopf .feld { min-width: 190px; }
+.treffer-gruppe { margin-bottom: 6px; font-size: 12px; color: var(--text-still); letter-spacing: .05em; }
+
+/* ---------------------------------------------------------- Kategorien */
+
+.kat-liste { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
+.kat-zeile { display: flex; align-items: center; gap: 8px; }
+.kat-zeile .feld { flex: 1; }
+
+/* ---------------------------------------------------------- Finanzen */
+
+.kachel-zahlen { display: flex; gap: 22px; flex-wrap: wrap; }
+.kachel-wert { display: flex; flex-direction: column; gap: 2px; }
+.kachel-label { font-size: 11.5px; color: var(--text-still); letter-spacing: .05em; }
+.kachel-zahl { font-size: 20px; font-variant-numeric: tabular-nums; }
+.kachel-plus { color: var(--neon-gruen); }
+.kachel-minus { color: var(--neon-koralle); }
+
+.balken { display: flex; flex-direction: column; gap: 6px; }
+.bal-zeile { display: grid; grid-template-columns: 160px 1fr 92px 34px; gap: 10px; align-items: center; font-size: 13px; }
+.bal-name { color: var(--text-schwach); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bal-spur { height: 8px; background: var(--bg-2); border: 1px solid var(--rand); border-radius: 999px; overflow: hidden; }
+.bal-fuell { display: block; height: 100%; border-right: 2px solid var(--ton); background: color-mix(in srgb, var(--ton) 22%, transparent); }
+.bal-wert { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bal-anzahl { text-align: right; color: var(--text-still); font-size: 12px; }
+
+.pruef { border: 1px solid var(--rand); border-left: 2px solid var(--rand-hell); border-radius: 8px; padding: 10px 13px; font-size: 13.5px; display: flex; flex-direction: column; gap: 3px; }
+.pruef-gut { border-left-color: var(--neon-gruen); }
+.pruef-schlecht { border-left-color: var(--neon-koralle); }
+.pruef-unklar { border-left-color: var(--neon-amber); }
+.pruef-text { color: var(--text-schwach); font-size: 13px; }
+
+.import-tabelle { display: flex; flex-direction: column; gap: 3px; max-height: 460px; overflow-y: auto; overflow-x: auto; }
+.import-zeile {
+  display: grid;
+  grid-template-columns: 22px 52px minmax(160px, 1fr) 150px 110px 92px 130px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  min-width: 780px;
+}
+.import-zeile:hover { background: var(--karte-2); }
+.import-dublette { opacity: .5; }
+.import-datum { color: var(--text-schwach); font-variant-numeric: tabular-nums; }
+.import-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-kat, .import-bereich { padding: 4px 7px; font-size: 12.5px; }
+.import-quelle { color: var(--text-still); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------------------------------------------------- Dialog */
+
+.dialog { position: fixed; inset: 0; background: rgba(4, 5, 7, .74); display: grid; place-items: center; padding: 16px; z-index: 40; }
+.dialog-karte {
+  width: min(520px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--karte);
+  border: 1px solid var(--neon-cyan);
+  box-shadow: 0 0 30px -14px var(--neon-cyan);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.dialog-kopf { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog-inhalt { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 16px; }
+.dialog-fuss { display: flex; justify-content: space-between; gap: 8px; }
+.dialog-feld { display: flex; flex-direction: column; gap: 5px; }
+.dialog-feld > label { font-size: 12px; color: var(--text-still); letter-spacing: .04em; }
+.dialog-paar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dialog-schalter { display: flex; align-items: center; gap: 8px; color: var(--text-schwach); font-size: 13.5px; }
+
+.wahl { display: flex; gap: 6px; flex-wrap: wrap; }
+.wahl button {
+  font: inherit; font-size: 13px; color: var(--text-schwach);
+  background: var(--bg-2); border: 1px solid var(--rand); border-radius: 999px;
+  padding: 5px 13px; cursor: pointer;
+}
+.wahl button:hover { color: var(--text); }
+.wahl button.aktiv { color: var(--text); border-color: var(--ton, var(--neon-cyan)); box-shadow: 0 0 10px -4px var(--ton, var(--neon-cyan)); }
+
+/* ---------------------------------------------------------- Gemeinde-Akten */
+
+.karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+
+.karte {
+  background: var(--karte);
+  border: 1px solid var(--rand);
+  border-top: 2px solid var(--ton, var(--rand-hell));
+  border-radius: var(--radius);
+  padding: 13px 15px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.karte:hover { border-color: var(--rand-hell); border-top-color: var(--ton, var(--rand-hell)); box-shadow: 0 0 14px -6px var(--ton, transparent); }
+.karte-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
+.karte-titel { margin: 0; font-size: 15px; font-weight: 600; }
+.karte-zeile { font-size: 13px; }
+.karte-still { color: var(--text-still); }
+.karte-warnung { color: var(--neon-amber); }
+.karte-frist { font-size: 12.5px; color: var(--text-schwach); border-left: 2px solid var(--neon-amber); padding-left: 8px; margin-top: 4px; }
+.karte-fuss { font-size: 11.5px; color: var(--text-still); margin-top: 6px; }
+
+.stamm { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.stamm-label { display: inline-block; min-width: 130px; color: var(--text-still); font-size: 12.5px; }
+.stamm-notiz { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--rand); color: var(--text-schwach); font-size: 13.5px; white-space: pre-wrap; }
+
+.mail-vorschau {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-schwach);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 420px;
+}
+
+/* ---------------------------------------------------------- Toast */
+
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  background: var(--karte); border: 1px solid var(--neon-gruen);
+  box-shadow: 0 0 16px -8px var(--neon-gruen);
+  border-radius: var(--radius); padding: 9px 16px; font-size: 13.5px; z-index: 60;
+}
+.toast-fehler { border-color: var(--neon-koralle); box-shadow: 0 0 16px -8px var(--neon-koralle); }
+
+/* ============================================================ Entwurf 2: Ruhige Karten
+   Hellerer Grafitgrund, mehr Luft, groessere Schrift, gedaempftere Raender.
+   Gedacht fuer laengeres Arbeiten am Stueck. */
+
+:root[data-thema="ruhe"] {
+  --bg: #15171b;
+  --bg-2: #1a1d22;
+  --karte: #1e2127;
+  --karte-2: #23272e;
+  --rand: #2f333b;
+  --rand-hell: #40454f;
+  --text: #e3e5ea;
+  --text-schwach: #9aa1ac;
+  --text-still: #767d89;
+  --radius: 14px;
+
+  --neon-gruen: #5fd39a;
+  --neon-cyan: #56c8d8;
+  --neon-magenta: #e07ac2;
+  --neon-amber: #e0a86a;
+  --neon-violett: #a08fd8;
+  --neon-koralle: #e08a80;
+}
+
+:root[data-thema="ruhe"] body { font-size: 16px; line-height: 1.65; }
+:root[data-thema="ruhe"] .block { padding: 18px 21px; margin-bottom: 15px; box-shadow: none; }
+:root[data-thema="ruhe"] .block-titel { font-size: 15px; margin-bottom: 13px; }
+:root[data-thema="ruhe"] .zeile { padding: 11px 14px; gap: 12px; border-left-width: 3px; box-shadow: none; }
+:root[data-thema="ruhe"] .karte { padding: 16px 18px; box-shadow: none; }
+:root[data-thema="ruhe"] .kal-tag { min-height: 104px; padding: 8px 9px; box-shadow: none; }
+:root[data-thema="ruhe"] .kal-pille { font-size: 12px; padding: 3px 7px; border-radius: 6px; }
+:root[data-thema="ruhe"] .knopf { padding: 9px 16px; font-size: 14px; box-shadow: none; }
+:root[data-thema="ruhe"] .knopf-neon:hover { box-shadow: 0 0 12px -5px var(--neon-cyan); }
+:root[data-thema="ruhe"] .tab { padding: 8px 15px; font-size: 14px; box-shadow: none; }
+:root[data-thema="ruhe"] .tab.aktiv { background: var(--karte); }
+:root[data-thema="ruhe"] .kal-tag-heute,
+:root[data-thema="ruhe"] .kal-tag-gewaehlt { box-shadow: none; }
+
+/* ============================================================ Entwurf 3: Linie
+   Tiefes Schwarz, keine Kartenflaechen, nur Haarlinien und Typografie.
+   Am reduziertesten — Farbe erscheint fast nur dort, wo etwas dringend ist. */
+
+:root[data-thema="linie"] {
+  --bg: #000000;
+  --bg-2: #070708;
+  --karte: transparent;
+  --karte-2: transparent;
+  --rand: #1f1f22;
+  --rand-hell: #35353a;
+  --text: #e8e8ea;
+  --text-schwach: #8a8a90;
+  --text-still: #5e5e64;
+  --radius: 0px;
+}
+
+:root[data-thema="linie"] .block {
+  border-width: 0 0 1px 0;
+  border-radius: 0;
+  padding: 16px 0 18px;
+  margin-bottom: 6px;
+  box-shadow: none;
+}
+:root[data-thema="linie"] .block-warnung { border-bottom-color: var(--neon-koralle); box-shadow: none; }
+:root[data-thema="linie"] .block-titel {
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-size: 11px;
+  color: var(--text-still);
+  font-weight: 500;
+}
+:root[data-thema="linie"] .zeile {
+  background: transparent;
+  border-width: 0 0 0 2px;
+  border-radius: 0;
+  padding: 7px 0 7px 12px;
+  box-shadow: none;
+}
+:root[data-thema="linie"] .zeile:hover { background: #0c0c0e; }
+:root[data-thema="linie"] .zeile-marke { border-color: transparent; padding: 1px 0 1px 10px; }
+:root[data-thema="linie"] .zeile-haken { border-radius: 0; }
+:root[data-thema="linie"] .karte {
+  background: transparent;
+  border-width: 0 0 0 2px;
+  border-radius: 0;
+  padding: 10px 0 12px 14px;
+  box-shadow: none;
+}
+:root[data-thema="linie"] .karten { gap: 4px; grid-template-columns: 1fr; }
+:root[data-thema="linie"] .kal-tag {
+  background: transparent;
+  border-width: 0;
+  border-top: 1px solid var(--rand);
+  border-radius: 0;
+  box-shadow: none;
+}
+:root[data-thema="linie"] .kal-tag-heute { border-top-color: var(--neon-cyan); box-shadow: none; }
+:root[data-thema="linie"] .kal-tag-gewaehlt { border-top-color: var(--neon-gruen); box-shadow: none; }
+:root[data-thema="linie"] .kal-pille { background: transparent; border-width: 0 0 0 2px; border-radius: 0; padding: 1px 0 1px 6px; }
+:root[data-thema="linie"] .kal-gitter { gap: 2px 6px; }
+:root[data-thema="linie"] .knopf { background: transparent; border-radius: 0; box-shadow: none; }
+:root[data-thema="linie"] .tab { border-radius: 0; border-width: 0 0 1px 0; box-shadow: none; }
+:root[data-thema="linie"] .tab.aktiv { border-bottom-color: var(--neon-cyan); box-shadow: none; }
+:root[data-thema="linie"] .feld,
+:root[data-thema="linie"] .schnell-feld { border-radius: 0; background: #08080a; }
+:root[data-thema="linie"] .spalte { background: transparent; border-width: 0; border-top: 2px solid; border-radius: 0; padding: 12px 0 0; }
+:root[data-thema="linie"] .dialog-karte { border-radius: 0; }
+:root[data-thema="linie"] .wahl button { border-radius: 0; background: transparent; }
+:root[data-thema="linie"] .toast { border-radius: 0; }
+
+/* ---------------------------------------------------------- Mobil */
+
+/* ------------------------------------------------------- Gemeinden-Kachel */
+
+.gem-block { display: flex; flex-direction: column; gap: 4px; }
+.gem-leiste { gap: 8px; }
+.gem-leiste-klickbar { cursor: pointer; }
+.gem-pfeil { color: var(--text-still); font-size: 11px; width: 10px; flex: none; }
+.gem-leiste .zeile-text { cursor: pointer; }
+.gem-leiste .zeile-text:hover { color: var(--neon-cyan); }
+.gem-aufgaben { display: flex; flex-direction: column; gap: 4px; padding-left: 18px; }
+.zeile-klein { padding: 4px 8px; font-size: 13px; background: transparent; }
+.zeile-marke-blass { color: var(--text-still); opacity: .8; }
+
+/* ---------------------------------------------------------- Kachel-Editor */
+
+.ed-raster {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: 10px;
+  touch-action: none;
+}
+.ed-voll { grid-column: 1 / -1; }
+.ed-spalte { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 54px; }
+.ed-spalte-kopf { font-size: 11px; color: var(--text-still); letter-spacing: .05em; }
+.ed-spalte-leer {
+  border: 1px dashed var(--rand);
+  border-radius: 8px;
+  min-height: 34px;
+  flex: 1;
+}
+.ed-ziel { border-color: var(--neon-cyan); background: rgba(52, 226, 226, .06); }
+
+.ed-kachel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--karte-2);
+  border: 1px solid var(--rand-hell);
+  border-radius: 8px;
+  padding: 6px 7px;
+  font-size: 12.5px;
+  min-width: 0;
+}
+.ed-kachel-aus { opacity: .42; border-style: dashed; }
+.ed-kachel-zieht { opacity: .35; }
+.ed-griff { cursor: grab; color: var(--text-still); padding: 0 2px; touch-action: none; user-select: none; }
+.ed-griff:active { cursor: grabbing; }
+.ed-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-knopf {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-schwach);
+  background: transparent;
+  border: 1px solid var(--rand);
+  border-radius: 5px;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+.ed-knopf:hover:not(:disabled) { color: var(--text); border-color: var(--rand-hell); }
+.ed-knopf:disabled { opacity: .3; cursor: default; }
+.ed-zeichen { color: var(--text-schwach); }
+
+.ed-schwebe {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  background: var(--karte);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  box-shadow: 0 6px 20px -8px #000;
+}
+
+@media (max-width: 900px) {
+  /* Sieben Kacheln passen am Handy nicht ohne Scrollen — also eine Spalte
+     und normales Seitenscrollen. */
+  body.start-aktiv { height: auto; overflow: visible; }
+  body.start-aktiv .app { height: auto; display: block; padding-bottom: 56px; }
+  body.start-aktiv .haupt { display: block; }
+  .start-raster { grid-template-columns: 1fr; flex: none; }
+  .start-raster .block > .liste { overflow-y: visible; }
+  .ed-raster { grid-template-columns: 1fr; }
+  .ed-voll { grid-column: auto; }
+  .spalten { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .bal-zeile { grid-template-columns: 110px 1fr 84px 28px; }
+}
+
+@media (max-width: 640px) {
+  .app { padding: 14px 11px 56px; }
+  .kachel-zahlen { gap: 16px; }
+  .kachel-zahl { font-size: 17px; }
+  .bal-zeile { grid-template-columns: 92px 1fr 78px; font-size: 12px; }
+  .bal-anzahl { display: none; }
+  .kopf { gap: 10px; }
+  .kopf-nav { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+  .tab { white-space: nowrap; }
+  .kal-gitter { gap: 4px; }
+  .kal-tag { min-height: 62px; padding: 4px 5px; }
+  .kal-pille { font-size: 10.5px; padding: 1px 4px; }
+  .dialog-paar { grid-template-columns: 1fr; }
+  .schnell { flex-wrap: wrap; }
+  .schnell-feld { flex: 1 1 100%; }
+}

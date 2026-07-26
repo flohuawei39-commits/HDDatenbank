@@ -1,0 +1,14 @@
+# Alles, was persoenlich ist, bleibt draussen. In data/ liegen PIN-Hash,
+# Sitzungen, der Mail-Zugangsschluessel, Kalender, Gemeinde-Schriftverkehr
+# und saemtliche Bankbuchungen.
+data/
+dokumente/
+backups/
+
+node_modules/
+*.tmp
+*.log
+
+Thumbs.db
+desktop.ini
+.DS_Store

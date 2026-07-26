@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>HDDatenbank</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div id="tor" class="tor">
+  <form id="tor-form" class="tor-karte" autocomplete="off">
+    <h1 class="tor-titel">HDDatenbank</h1>
+    <p id="tor-text" class="tor-text">PIN eingeben</p>
+    <input id="tor-pin" class="tor-pin" type="password" inputmode="numeric" pattern="[0-9]*" placeholder="••••" maxlength="12" autocomplete="off">
+    <input id="tor-pin2" class="tor-pin versteckt" type="password" inputmode="numeric" pattern="[0-9]*" placeholder="wiederholen" maxlength="12" autocomplete="off">
+    <label class="tor-merken"><input id="tor-merken" type="checkbox" checked> angemeldet bleiben</label>
+    <button class="knopf knopf-neon" type="submit">Weiter</button>
+    <p id="tor-fehler" class="tor-fehler"></p>
+  </form>
+</div>
+
+<div id="app" class="app versteckt">
+
+  <header class="kopf">
+    <div class="kopf-marke">HD<span>Datenbank</span></div>
+    <nav class="kopf-nav">
+      <button class="tab aktiv" data-ansicht="start">Start</button>
+      <button class="tab" data-ansicht="kalender">Kalender</button>
+      <button class="tab" data-ansicht="aufgaben">Aufgaben</button>
+      <button class="tab" data-ansicht="tsz">Tierschutzzentrum</button>
+      <button class="tab" data-ansicht="finanzen">Finanzen</button>
+      <button class="tab" data-ansicht="suche">Suche</button>
+      <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
+    </nav>
+    <button id="abmelden" class="knopf knopf-still">Abmelden</button>
+  </header>
+
+  <div class="schnell">
+    <input id="schnell-feld" class="schnell-feld" type="text" placeholder="morgen 14 Uhr Zahnarzt !hoch #Privat  —  Enter für Vorschau">
+    <button id="schnell-knopf" class="knopf knopf-neon">Vorschau</button>
+  </div>
+  <div id="schnell-vorschau" class="schnell-vorschau versteckt"></div>
+
+  <main class="haupt">
+
+    <section id="ansicht-start" class="ansicht">
+      <div id="start-raster" class="start-raster">
+        <div class="start-voll" data-spalte="voll"></div>
+        <div class="start-spalte" data-spalte="1"></div>
+        <div class="start-spalte" data-spalte="2"></div>
+        <div class="start-spalte" data-spalte="3"></div>
+      </div>
+
+      <!-- Die Kacheln liegen hier und werden beim Laden in ihre Spalte einsortiert. -->
+      <div id="kachel-lager" class="versteckt">
+        <section id="fristen-block" class="block block-warnung" data-kachel="fristen">
+          <h2 class="block-titel">Fristen in den nächsten 14 Tagen</h2>
+          <div id="fristen-liste" class="liste"></div>
+        </section>
+
+        <section class="block" data-kachel="heute">
+          <h2 class="block-titel">Heute <span id="heute-datum" class="block-neben"></span></h2>
+          <div id="heute-liste" class="liste"></div>
+        </section>
+
+        <section class="block" data-kachel="morgen">
+          <h2 class="block-titel">Morgen</h2>
+          <div id="morgen-liste" class="liste"></div>
+        </section>
+
+        <section class="block" data-kachel="aufgaben">
+          <h2 class="block-titel">Offene Aufgaben</h2>
+          <div id="offen-liste" class="liste"></div>
+        </section>
+
+        <section id="finanz-kachel" class="block" data-kachel="finanzen">
+          <h2 class="block-titel">Finanzen <span id="finanz-monat" class="block-neben"></span></h2>
+          <div class="kachel-zahlen">
+            <div class="kachel-wert"><span class="kachel-label">Einnahmen</span><span id="kachel-ein" class="kachel-zahl kachel-plus">—</span></div>
+            <div class="kachel-wert"><span class="kachel-label">Ausgaben</span><span id="kachel-aus" class="kachel-zahl kachel-minus">—</span></div>
+            <div class="kachel-wert"><span class="kachel-label">Saldo</span><span id="kachel-saldo" class="kachel-zahl">—</span></div>
+          </div>
+          <p id="kachel-hinweis" class="hinweis"></p>
+          <button class="knopf knopf-still" data-ansicht-sprung="finanzen" style="margin-top:8px">Mehr sehen</button>
+        </section>
+
+        <section class="block block-schmal" data-kachel="can">
+          <h2 class="block-titel" id="can-titel">Can</h2>
+          <div id="can-liste" class="liste liste-dezent"></div>
+        </section>
+
+        <section id="still-block" class="block" data-kachel="gemeinden">
+          <h2 class="block-titel">Gemeinden</h2>
+          <div id="still-liste" class="liste"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="ansicht-kalender" class="ansicht versteckt">
+      <div class="kal-kopf">
+        <button id="kal-zurueck" class="knopf knopf-still">‹</button>
+        <h2 id="kal-titel" class="kal-titel"></h2>
+        <button id="kal-vor" class="knopf knopf-still">›</button>
+        <button id="kal-heute" class="knopf knopf-still">Heute</button>
+        <button id="kal-neu" class="knopf knopf-neon">Neuer Eintrag</button>
+      </div>
+      <div class="kal-wochentage">
+        <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
+      </div>
+      <div id="kal-gitter" class="kal-gitter"></div>
+      <section id="tag-block" class="block versteckt">
+        <h2 class="block-titel" id="tag-titel"></h2>
+        <div id="tag-liste" class="liste"></div>
+      </section>
+    </section>
+
+    <section id="ansicht-aufgaben" class="ansicht versteckt">
+      <div class="kal-kopf">
+        <h2 class="kal-titel">Aufgaben</h2>
+        <button id="aufgabe-neu" class="knopf knopf-neon">Neue Aufgabe</button>
+      </div>
+      <div class="spalten">
+        <section class="spalte" data-status="offen"><h3 class="spalte-titel">Offen</h3><div class="liste" data-liste="offen"></div></section>
+        <section class="spalte" data-status="laeuft"><h3 class="spalte-titel">Läuft</h3><div class="liste" data-liste="laeuft"></div></section>
+        <section class="spalte" data-status="erledigt"><h3 class="spalte-titel">Erledigt</h3><div class="liste" data-liste="erledigt"></div></section>
+      </div>
+    </section>
+
+    <section id="ansicht-tsz" class="ansicht versteckt">
+      <div class="kal-kopf">
+        <h2 class="kal-titel" id="tsz-titel">Tierschutzzentrum</h2>
+        <button id="tsz-zurueck" class="knopf knopf-still versteckt">‹ Übersicht</button>
+        <button id="tsz-neu" class="knopf knopf-neon">Neue Gemeinde</button>
+      </div>
+      <div id="tsz-uebersicht" class="karten"></div>
+      <div id="tsz-akte" class="versteckt"></div>
+    </section>
+
+    <section id="ansicht-finanzen" class="ansicht versteckt">
+      <div class="kal-kopf">
+        <h2 class="kal-titel">Finanzen</h2>
+        <select id="fin-zeitraum" class="feld"></select>
+        <select id="fin-bereich" class="feld">
+          <option value="">privat und geschäftlich</option>
+          <option value="privat">nur privat</option>
+          <option value="geschaeftlich">nur geschäftlich</option>
+        </select>
+        <button id="fin-regeln" class="knopf knopf-still">Regeln</button>
+        <button id="fin-import" class="knopf knopf-neon">Kontoauszug einlesen</button>
+        <input type="file" id="fin-datei" class="versteckt" accept="application/pdf" multiple>
+      </div>
+
+      <section id="fin-leer" class="block versteckt">
+        <p class="hinweis" style="margin-top:0">
+          Noch keine Buchungen. Über „Kontoauszug einlesen" ein PDF von N26 oder Wise auswählen.
+          Die Datei wird gelesen und sofort verworfen — gespeichert werden nur die erkannten Buchungen.
+          Vor der Übernahme siehst du jede Zeile und kannst sie ändern.
+        </p>
+      </section>
+
+      <div id="fin-uebersicht"></div>
+      <section id="fin-import-block" class="block versteckt"></section>
+      <section id="fin-regel-block" class="block versteckt"></section>
+    </section>
+
+    <section id="ansicht-suche" class="ansicht versteckt">
+      <div class="such-kopf">
+        <input id="such-feld" class="schnell-feld" type="search" placeholder="Wort eingeben, zum Beispiel Futter">
+        <select id="such-bereich" class="feld"></select>
+      </div>
+      <p id="such-info" class="hinweis"></p>
+      <div id="such-treffer" class="liste"></div>
+    </section>
+
+    <section id="ansicht-einstellungen" class="ansicht versteckt">
+      <section class="block">
+        <h2 class="block-titel">Aussehen</h2>
+        <p class="hinweis" style="margin-top:0">Drei Entwürfe. Umschalten wirkt sofort auf der ganzen Seite.</p>
+        <div class="wahl" data-wahl="thema" id="thema-wahl">
+          <button type="button" data-wert="kante">Neonkante</button>
+          <button type="button" data-wert="ruhe">Ruhige Karten</button>
+          <button type="button" data-wert="linie">Linie</button>
+        </div>
+        <p class="hinweis" id="thema-text"></p>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Startseite anordnen</h2>
+        <p class="hinweis" style="margin-top:0">
+          Kachel am Griff <span class="ed-zeichen">≡</span> anfassen und an die neue Stelle ziehen.
+          Am Handy geht es auch über die Knöpfe: <span class="ed-zeichen">‹ ›</span> wechselt die Spalte,
+          <span class="ed-zeichen">⬆ ⬇</span> verschiebt in der Spalte, <span class="ed-zeichen">⊙</span>
+          blendet aus und wieder ein. Gespeichert wird sofort.
+        </p>
+        <div id="ed-raster" class="ed-raster"></div>
+        <div class="reihe" style="margin-top:10px">
+          <span class="hinweis" style="margin:0 4px 0 0">Vorlage:</span>
+          <span id="ed-vorlagen" class="wahl"></span>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Tagesmail</h2>
+        <p class="hinweis" style="margin-top:0">
+          Eine Mail pro Tag mit allem, was heute, morgen und in sieben Tagen ansteht, dazu die Fristen
+          der nächsten 14 Tage. Steht nichts an, wird auch nichts verschickt.
+        </p>
+        <p class="hinweis">
+          Verschickt wird aus dieser geöffneten Seite heraus, nicht vom Server — Web3Forms lehnt
+          serverseitige Aufrufe im Gratistarif ab. War das Dashboard um 07:00 zu, geht die Mail beim
+          nächsten Öffnen raus und ist als nachträglich gekennzeichnet. Der Autostart öffnet es bei
+          jeder Anmeldung.
+        </p>
+        <label class="dialog-schalter"><input type="checkbox" id="mail-aktiv"> Tagesmail verschicken</label>
+        <div class="reihe" style="margin-top:10px">
+          <input id="mail-empfaenger" class="feld" type="email" placeholder="Empfänger" style="flex:1;min-width:220px">
+          <input id="mail-zeit" class="feld" type="time" value="07:00">
+        </div>
+        <div class="reihe" style="margin-top:8px">
+          <input id="mail-schluessel" class="feld" type="password" placeholder="Web3Forms-Zugangsschlüssel" style="flex:1;min-width:220px">
+          <button id="mail-sichern" class="knopf knopf-neon">Sichern</button>
+        </div>
+        <div class="reihe" style="margin-top:8px">
+          <button id="mail-vorschau" class="knopf knopf-still">Vorschau ansehen</button>
+          <button id="mail-test" class="knopf knopf-still">Testmail jetzt senden</button>
+        </div>
+        <p id="mail-info" class="hinweis"></p>
+        <pre id="mail-text" class="mail-vorschau versteckt"></pre>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Kategorien <span class="block-neben">Kalender</span></h2>
+        <div id="kat-liste" class="kat-liste"></div>
+        <div class="reihe">
+          <input id="kat-name" class="feld" type="text" placeholder="Neue Kategorie">
+          <input id="kat-farbe" class="feld feld-farbe" type="color" value="#34e2e2">
+          <button id="kat-anlegen" class="knopf knopf-neon">Anlegen</button>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Kategorien <span class="block-neben">Finanzen</span></h2>
+        <p class="hinweis" style="margin-top:0">
+          Löschen geht nur, solange keine Buchung daran hängt. Anlegen kannst du auch direkt
+          beim Zuordnen einer Buchung und in der Importkontrolle.
+        </p>
+        <div id="finkat-liste" class="kat-liste"></div>
+        <div class="reihe">
+          <input id="finkat-name" class="feld" type="text" placeholder="Neue Finanzkategorie">
+          <input id="finkat-farbe" class="feld feld-farbe" type="color" value="#3ddc84">
+          <button id="finkat-anlegen" class="knopf knopf-neon">Anlegen</button>
+        </div>
+      </section>
+      <section class="block">
+        <h2 class="block-titel">PIN ändern</h2>
+        <div class="reihe">
+          <input id="pin-alt" class="feld" type="password" inputmode="numeric" placeholder="alte PIN">
+          <input id="pin-neu" class="feld" type="password" inputmode="numeric" placeholder="neue PIN">
+          <button id="pin-aendern" class="knopf knopf-neon">Ändern</button>
+        </div>
+        <p id="pin-info" class="hinweis"></p>
+      </section>
+      <section class="block">
+        <h2 class="block-titel">Schnelleingabe</h2>
+        <p class="hinweis">
+          Datum: <code>heute</code>, <code>morgen</code>, <code>übermorgen</code>, <code>montag</code>,
+          <code>nächsten freitag</code>, <code>3.8.</code>, <code>26.07.2026</code><br>
+          Zeit: <code>14 Uhr</code>, <code>14:30</code> &nbsp;·&nbsp; Zeitraum: <code>bis 5.8.</code><br>
+          Priorität: <code>!hoch</code> <code>!mittel</code> <code>!gering</code> &nbsp;·&nbsp; Frist: <code>!frist</code><br>
+          Kategorie: <code>#Can</code> &nbsp;·&nbsp; Wiederholung: <code>täglich</code>, <code>wöchentlich</code>,
+          <code>monatlich</code>, <code>jährlich</code>, <code>jeden montag</code>
+        </p>
+      </section>
+    </section>
+
+  </main>
+</div>
+
+<div id="dialog" class="dialog versteckt">
+  <div class="dialog-karte">
+    <div class="dialog-kopf">
+      <h2 id="dialog-titel" class="block-titel">Eintrag</h2>
+      <button id="dialog-zu" class="knopf knopf-still">✕</button>
+    </div>
+    <div id="dialog-inhalt" class="dialog-inhalt"></div>
+    <div class="dialog-fuss">
+      <button id="dialog-loeschen" class="knopf knopf-gefahr">Löschen</button>
+      <button id="dialog-speichern" class="knopf knopf-neon">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast versteckt"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

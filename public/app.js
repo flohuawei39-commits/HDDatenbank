@@ -1,0 +1,1819 @@
+'use strict';
+
+/* HDDatenbank — Oberflaeche. Kein Framework, bewusst nur DOM und fetch. */
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+const S = {
+  kategorien: [],
+  tasks: [],
+  finKategorien: [],
+  finBuchungen: [],
+  importDaten: null,
+  gemeinden: [],
+  staende: [],
+  akteId: null,
+  thema: 'kante',
+  heute: null,
+  ansicht: 'start',
+  startseite: null,
+  kachelNamen: [],
+  vorlagen: [],
+  offeneGemeinden: new Set(),
+  kalJahr: 0,
+  kalMonat: 0,
+  monat: null,
+  gewaehlterTag: null,
+  vorschau: null
+};
+
+const PRIO_LABEL = { gering: 'gering', mittel: 'mittel', hoch: 'hoch' };
+const WDH_LABEL = { taeglich: 'täglich', woechentlich: 'wöchentlich', monatlich: 'monatlich', jaehrlich: 'jährlich' };
+const TAGE_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+// ---------------------------------------------------------------- Werkzeug
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (z) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[z]
+));
+
+const api = async (pfad, optionen = {}) => {
+  const antwort = await fetch(pfad, {
+    ...optionen,
+    headers: { 'Content-Type': 'application/json', 'X-HDD': '1', ...(optionen.headers || {}) }
+  });
+  const daten = await antwort.json().catch(() => ({}));
+  if (!antwort.ok) throw new Error(daten.fehler || `Fehler ${antwort.status}`);
+  if (daten.fehler) throw new Error(daten.fehler);
+  return daten;
+};
+
+const post = (pfad, koerper) => api(pfad, { method: 'POST', body: JSON.stringify(koerper || {}) });
+const del = (pfad) => api(pfad, { method: 'DELETE' });
+
+const toast = (nachricht, fehler = false) => {
+  const el = $('#toast');
+  el.textContent = nachricht;
+  el.className = `toast${fehler ? ' toast-fehler' : ''}`;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => el.classList.add('versteckt'), 2600);
+};
+
+const fangen = (fn) => (...args) => Promise.resolve(fn(...args)).catch((f) => toast(f.message, true));
+
+const heuteISO = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+const formatDE = (iso) => (iso ? `${Number(iso.slice(8))}.${Number(iso.slice(5, 7))}.${iso.slice(0, 4)}` : '');
+const formatKurz = (iso) => (iso ? `${Number(iso.slice(8))}.${Number(iso.slice(5, 7))}.` : '');
+
+const wochentagIndex = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return (new Date(y, m - 1, d).getDay() + 6) % 7;
+};
+
+const kategorie = (id) => S.kategorien.find((k) => k.id === id) || null;
+const katFarbe = (id) => (kategorie(id) ? kategorie(id).farbe : null);
+
+const relativ = (tage) => {
+  if (tage === 0) return 'heute';
+  if (tage === 1) return 'gestern';
+  if (tage === -1) return 'morgen';
+  if (tage > 1) return `vor ${tage} Tagen`;
+  return `in ${Math.abs(tage)} Tagen`;
+};
+
+// ---------------------------------------------------------------- Anmeldung
+
+const torZeigen = (eingerichtet) => {
+  $('#tor').classList.remove('versteckt');
+  $('#app').classList.add('versteckt');
+  $('#tor-text').textContent = eingerichtet
+    ? 'PIN eingeben'
+    : 'Ersteinrichtung: PIN festlegen (4 bis 12 Ziffern)';
+  $('#tor-pin2').classList.toggle('versteckt', eingerichtet);
+  $('#tor-form').dataset.modus = eingerichtet ? 'login' : 'setup';
+  $('#tor-pin').focus();
+};
+
+const appZeigen = async () => {
+  $('#tor').classList.add('versteckt');
+  $('#app').classList.remove('versteckt');
+  await datenLaden();
+  const jetzt = new Date();
+  S.kalJahr = jetzt.getFullYear();
+  S.kalMonat = jetzt.getMonth() + 1;
+  await ansichtWechseln('start');
+
+  mailWecker();
+  setInterval(mailWecker, 60000);
+};
+
+$('#tor-form').addEventListener('submit', fangen(async (ereignis) => {
+  ereignis.preventDefault();
+  const fehlerFeld = $('#tor-fehler');
+  fehlerFeld.textContent = '';
+  const pin = $('#tor-pin').value.trim();
+
+  try {
+    if ($('#tor-form').dataset.modus === 'setup') {
+      if (pin !== $('#tor-pin2').value.trim()) throw new Error('Die beiden PINs stimmen nicht überein.');
+      await post('/api/setup', { pin });
+    } else {
+      await post('/api/login', { pin, merken: $('#tor-merken').checked });
+    }
+  } catch (fehler) {
+    fehlerFeld.textContent = fehler.message;
+    $('#tor-pin').select();
+    return;
+  }
+  $('#tor-pin').value = '';
+  $('#tor-pin2').value = '';
+  await appZeigen();
+}));
+
+$('#abmelden').addEventListener('click', fangen(async () => {
+  await post('/api/logout');
+  location.reload();
+}));
+
+// ---------------------------------------------------------------- Navigation
+
+const ansichtWechseln = async (name) => {
+  S.ansicht = name;
+  $$('.tab').forEach((t) => t.classList.toggle('aktiv', t.dataset.ansicht === name));
+  $$('.ansicht').forEach((a) => a.classList.toggle('versteckt', a.id !== `ansicht-${name}`));
+  // Nur die Startseite laeuft ohne Seitenscrollen — siehe body.start-aktiv im CSS.
+  document.body.classList.toggle('start-aktiv', name === 'start');
+  if (name === 'start') await startLaden();
+  if (name === 'kalender') await monatLaden();
+  if (name === 'aufgaben') { await datenLaden(); aufgabenZeichnen(); }
+  if (name === 'tsz') await tszLaden();
+  if (name === 'finanzen') await finanzenLaden();
+  if (name === 'suche') { bereicheFuellen(); $('#such-feld').focus(); }
+  if (name === 'einstellungen') { await datenLaden(); katZeichnen(); await finkatLaden(); await einstellungenLaden(); }
+};
+
+$$('.tab').forEach((tab) => tab.addEventListener('click', fangen(() => ansichtWechseln(tab.dataset.ansicht))));
+
+const datenLaden = async () => {
+  const daten = await api('/api/daten');
+  S.kategorien = daten.kategorien;
+  S.tasks = daten.tasks;
+  S.heute = daten.heute;
+};
+
+// ---------------------------------------------------------------- Schnelleingabe
+
+const vorschauZeichnen = (v) => {
+  S.vorschau = v;
+  const kat = kategorie(v.kategorie);
+  const teile = [
+    `<span class="vp-zeile">Datum</span> <span class="vp-wert">${esc(formatDE(v.datum))}${v.datumBis ? ` bis ${esc(formatDE(v.datumBis))}` : ''}</span>`,
+    v.uhrzeit ? `<span class="vp-zeile">Zeit</span> <span class="vp-wert">${esc(v.uhrzeit)} Uhr</span>` : '',
+    `<span class="vp-zeile">Text</span> <span class="vp-wert">${esc(v.text || '—')}</span>`,
+    kat ? `<span class="vp-zeile">Kategorie</span> <span class="vp-wert">${esc(kat.name)}</span>` : '',
+    `<span class="vp-zeile">Priorität</span> <span class="vp-wert">${esc(PRIO_LABEL[v.prioritaet])}</span>`,
+    v.istFrist ? '<span class="vp-wert">als Frist markiert</span>' : '',
+    v.wiederholung ? `<span class="vp-zeile">Wiederholung</span> <span class="vp-wert">${esc(WDH_LABEL[v.wiederholung.typ])}</span>` : ''
+  ].filter(Boolean);
+
+  $('#schnell-vorschau').innerHTML = `
+    ${teile.join(' &nbsp;·&nbsp; ')}
+    ${v.hinweise.length ? `<div class="vp-hinweis">${v.hinweise.map(esc).join('<br>')}</div>` : ''}
+    <div class="reihe">
+      <button class="knopf knopf-neon" id="vp-speichern">Speichern</button>
+      <button class="knopf knopf-still" id="vp-bearbeiten">Erst bearbeiten</button>
+      <button class="knopf knopf-still" id="vp-abbrechen">Verwerfen</button>
+    </div>`;
+  $('#schnell-vorschau').classList.remove('versteckt');
+
+  $('#vp-speichern').addEventListener('click', fangen(async () => {
+    if (!v.text) throw new Error('Ohne Text kann nichts gespeichert werden.');
+    await post('/api/eintrag', v);
+    vorschauSchliessen();
+    $('#schnell-feld').value = '';
+    toast('Eintrag gespeichert');
+    await neuZeichnen();
+  }));
+  $('#vp-bearbeiten').addEventListener('click', () => { vorschauSchliessen(); eintragDialog({ ...v, id: null }); });
+  $('#vp-abbrechen').addEventListener('click', vorschauSchliessen);
+};
+
+const vorschauSchliessen = () => {
+  S.vorschau = null;
+  $('#schnell-vorschau').classList.add('versteckt');
+  $('#schnell-vorschau').innerHTML = '';
+};
+
+const schnellPruefen = fangen(async () => {
+  const text = $('#schnell-feld').value.trim();
+  if (!text) return vorschauSchliessen();
+  vorschauZeichnen(await post('/api/schnell', { text }));
+});
+
+$('#schnell-knopf').addEventListener('click', schnellPruefen);
+$('#schnell-feld').addEventListener('keydown', (e) => { if (e.key === 'Enter') schnellPruefen(); });
+
+// ---------------------------------------------------------------- Zeilenbau
+
+const zeile = (v, optionen = {}) => {
+  const klassen = ['zeile'];
+  if (v.erledigt) klassen.push('zeile-erledigt');
+  else if (optionen.dringend) klassen.push('zeile-dringend');
+  else if (v.istFrist) klassen.push('zeile-frist');
+  else if (v.prioritaet === 'hoch') klassen.push('zeile-hoch');
+
+  const farbe = katFarbe(v.kategorie);
+  const kat = kategorie(v.kategorie);
+  const marken = [];
+  if (optionen.marke) marken.push(`<span class="zeile-marke">${esc(optionen.marke)}</span>`);
+  if (optionen.herkunft) marken.push(`<span class="zeile-marke">${esc(optionen.herkunft)}</span>`);
+  if (kat) marken.push(`<span class="zeile-marke zeile-marke-neon" style="--ton:${esc(kat.farbe)}">${esc(kat.name)}</span>`);
+  if (v.wiederkehrend) marken.push('<span class="zeile-marke">Serie</span>');
+  if (v.mehrtaegig) marken.push(`<span class="zeile-marke">${esc(formatKurz(v.start))}–${esc(formatKurz(v.ende))}</span>`);
+
+  const zeit = v.uhrzeit ? esc(v.uhrzeit) : (optionen.zeitText ? esc(optionen.zeitText) : '');
+
+  // Fristen aus einer Gemeinde-Akte fuehren in die Akte, nicht in den Eintragsdialog.
+  if (v.istGemeinde) {
+    return `<div class="${klassen.join(' ')}" data-springe-gemeinde="${esc(v.gemeindeId)}">
+      ${zeit ? `<span class="zeile-zeit">${zeit}</span>` : ''}
+      <span class="zeile-text">${esc(v.text)}</span>
+      ${marken.join(' ')}
+    </div>`;
+  }
+
+  return `<div class="${klassen.join(' ')}" style="${farbe ? `--kat:${esc(farbe)}` : ''}" data-id="${esc(v.id)}" data-datum="${esc(v.start || v.datum || '')}" data-art="eintrag">
+    <button class="zeile-haken" data-haken="1" title="erledigt">${v.erledigt ? '✓' : ''}</button>
+    ${zeit ? `<span class="zeile-zeit">${zeit}</span>` : ''}
+    <span class="zeile-text">${esc(v.text)}</span>
+    ${marken.join(' ')}
+  </div>`;
+};
+
+const aufgabenZeile = (t) => {
+  const klassen = ['zeile'];
+  if (t.status === 'erledigt') klassen.push('zeile-erledigt');
+  else if (t.prioritaet === 'hoch') klassen.push('zeile-hoch');
+  const faellig = t.faellig
+    ? `<span class="zeile-marke${t.faellig <= S.heute && t.status !== 'erledigt' ? ' zeile-marke-neon' : ''}" ${t.faellig <= S.heute ? 'style="--ton:var(--neon-koralle)"' : ''}>${esc(formatKurz(t.faellig))}</span>`
+    : '';
+  return `<div class="${klassen.join(' ')}" data-id="${esc(t.id)}" data-art="aufgabe">
+    <button class="zeile-haken" data-haken="1" title="erledigt">${t.status === 'erledigt' ? '✓' : ''}</button>
+    <span class="zeile-text">${esc(t.titel)}</span>
+    ${faellig}
+    <span class="zeile-marke">${esc(PRIO_LABEL[t.prioritaet])}</span>
+  </div>`;
+};
+
+const leer = (text) => `<p class="liste-leer">${esc(text)}</p>`;
+
+// ---------------------------------------------------------------- Startseite
+
+/**
+ * Kacheln in ihre Spalte einsortieren. Die Abschnitte selbst bleiben dieselben
+ * DOM-Knoten und behalten ihren Inhalt — verschoben wird nur, wo sie haengen.
+ * Ausgeblendete wandern zurueck ins Lager, damit leere Spalten einklappen.
+ */
+const kachelnEinsortieren = () => {
+  const layout = S.startseite;
+  if (!layout) return;
+  const lager = $('#kachel-lager');
+
+  for (const platz of layout.kacheln) {
+    const kachel = document.querySelector(`[data-kachel="${platz.id}"]`);
+    if (!kachel) continue;
+    const ziel = platz.sichtbar
+      ? document.querySelector(`#start-raster [data-spalte="${platz.spalte}"]`)
+      : lager;
+    if (ziel) ziel.appendChild(kachel);
+  }
+};
+
+/** Kachel ein- oder ausblenden, ohne die Spaltenzuordnung anzufassen. */
+const kachelZeigen = (id, zeigen) => {
+  const kachel = document.querySelector(`[data-kachel="${id}"]`);
+  if (!kachel) return;
+  const platz = (S.startseite?.kacheln || []).find((k) => k.id === id);
+  // Vom Benutzer ausgeblendete Kacheln bleiben aus, auch wenn Daten da sind.
+  kachel.classList.toggle('versteckt', !zeigen || !platz || !platz.sichtbar);
+};
+
+/**
+ * Eine Gemeinde-Leiste. Rechtsbuendig steht die Zahl offener Aufgaben, wenn es
+ * welche gibt, sonst der Stillstand an genau derselben Stelle wie vorher.
+ * Ein Klick auf die Leiste klappt die Aufgaben auf, ein Klick auf den Namen
+ * fuehrt in die Akte.
+ */
+const gemeindeLeiste = (g) => {
+  const offen = g.aufgaben || [];
+  const auf = S.offeneGemeinden.has(g.id) && offen.length > 0;
+  const marke = offen.length
+    ? `${offen.length} ${offen.length === 1 ? 'Aufgabe' : 'Aufgaben'}`
+    : (g.tageStill === null ? 'noch kein Schritt' : `seit ${g.tageStill} Tagen still`);
+
+  const aufgaben = auf ? `<div class="gem-aufgaben">${offen.map((a) => {
+    const dringend = a.tageBis !== null && a.tageBis <= 3;
+    const datum = a.datum
+      ? `<span class="zeile-marke${dringend ? ' zeile-marke-neon' : ''}">${esc(formatKurz(a.datum))}</span>`
+      : '<span class="zeile-marke zeile-marke-blass">ohne Datum</span>';
+    return `<div class="zeile zeile-klein" data-gem-aufgabe="${esc(a.id)}" data-gemeinde="${esc(g.id)}" data-datum="${esc(a.datum || '')}">
+      <button class="zeile-haken" data-gem-haken="1" title="erledigt"></button>
+      <span class="zeile-text">${esc(a.text)}</span>
+      ${datum}
+    </div>`;
+  }).join('')}</div>` : '';
+
+  return `<div class="gem-block">
+    <div class="zeile gem-leiste${offen.length ? ' gem-leiste-klickbar' : ''}" data-gem-leiste="${esc(g.id)}">
+      <span class="gem-pfeil">${offen.length ? (auf ? '▾' : '▸') : '·'}</span>
+      <span class="zeile-text" data-springe-gemeinde="${esc(g.id)}">${esc(g.name)}</span>
+      <span class="zeile-marke">${esc(marke)}</span>
+    </div>
+    ${aufgaben}
+  </div>`;
+};
+
+const startLaden = async () => {
+  const d = await api('/api/start');
+  S.kategorien = d.kategorien;
+  S.heute = d.heute;
+  if (d.thema) themaSetzen(d.thema);
+  if (d.startseite) { S.startseite = d.startseite; kachelnEinsortieren(); }
+
+  $('#heute-datum').textContent = `${TAGE_LANG[wochentagIndex(d.heute)]}, ${formatDE(d.heute)}`;
+
+  kachelZeigen('fristen', d.fristen.length > 0);
+  $('#fristen-liste').innerHTML = d.fristen
+    .map((f) => zeile(f, {
+      dringend: f.tageBis <= 3,
+      marke: f.tageBis === 0 ? 'heute fällig' : `noch ${f.tageBis} Tage`,
+      zeitText: formatKurz(f.start),
+      herkunft: f.herkunft
+    }))
+    .join('');
+
+  const f = d.finanzen || {};
+  kachelZeigen('finanzen', Boolean(f.hatDaten));
+  if (f.hatDaten) {
+    $('#finanz-monat').textContent = f.monat;
+    $('#kachel-ein').textContent = euro(f.einnahmen);
+    $('#kachel-aus').textContent = euro(f.ausgaben);
+    $('#kachel-saldo').textContent = euro(f.saldo);
+    $('#kachel-saldo').className = `kachel-zahl ${f.saldo < 0 ? 'kachel-minus' : 'kachel-plus'}`;
+    $('#kachel-hinweis').textContent = f.ohneKategorie
+      ? `${f.ohneKategorie} Buchungen ohne Kategorie — antippen führt zu den Finanzen.`
+      : `${f.anzahl} Buchungen in diesem Monat.`;
+  }
+
+  const gemeinden = d.gemeinden || [];
+  kachelZeigen('gemeinden', gemeinden.length > 0);
+  $('#still-liste').innerHTML = gemeinden.map(gemeindeLeiste).join('');
+
+  const heuteAlles = [
+    ...d.heuteEintraege.map((e) => zeile(e)),
+    ...d.heuteAufgaben.map((t) => aufgabenZeile(t))
+  ];
+  $('#heute-liste').innerHTML = heuteAlles.length ? heuteAlles.join('') : leer('Nichts eingetragen.');
+  $('#morgen-liste').innerHTML = d.morgenEintraege.length ? d.morgenEintraege.map((e) => zeile(e)).join('') : leer('Nichts eingetragen.');
+  $('#offen-liste').innerHTML = d.offeneAufgaben.length ? d.offeneAufgaben.map(aufgabenZeile).join('') : leer('Keine offenen Aufgaben.');
+
+  const canBlock = $('#can-liste').closest('.block');
+  if (d.canKategorie) {
+    canBlock.classList.remove('versteckt');
+    $('#can-titel').textContent = d.canKategorie.name;
+    $('#can-liste').innerHTML = d.canListe.length
+      ? d.canListe.map((c) => `<div class="zeile" style="--kat:${esc(d.canKategorie.farbe)}" data-id="${esc(c.id)}" data-datum="${esc(c.datum)}" data-art="eintrag">
+          <span class="zeile-zeit">${esc(formatKurz(c.datum))}</span>
+          <span class="zeile-text">${esc(c.text)}</span>
+          <span class="zeile-marke">${esc(relativ(c.tageHer))}</span>
+        </div>`).join('')
+      : leer('Noch keine Einträge.');
+  } else {
+    canBlock.classList.add('versteckt');
+  }
+};
+
+// ---------------------------------------------------------------- Kalender
+
+const monatLaden = async () => {
+  const d = await api(`/api/monat?jahr=${S.kalJahr}&monat=${S.kalMonat}`);
+  S.monat = d;
+  S.heute = d.heute;
+  await datenLaden();
+  kalenderZeichnen();
+};
+
+const kalenderZeichnen = () => {
+  const d = S.monat;
+  $('#kal-titel').textContent = `${MONATE[S.kalMonat - 1]} ${S.kalJahr}`;
+
+  $('#kal-gitter').innerHTML = d.gitter.map((tag) => {
+    const fremd = Number(tag.slice(5, 7)) !== S.kalMonat;
+    const eintraege = d.tage[tag] || [];
+    const aufgaben = d.aufgaben[tag] || [];
+    const klassen = ['kal-tag'];
+    if (fremd) klassen.push('kal-tag-fremd');
+    if (tag === d.heute) klassen.push('kal-tag-heute');
+    if (tag === S.gewaehlterTag) klassen.push('kal-tag-gewaehlt');
+
+    const pillen = [];
+    for (const e of eintraege.slice(0, 3)) {
+      const p = ['kal-pille'];
+      if (e.erledigt) p.push('kal-pille-erledigt');
+      else if (e.istFrist) p.push('kal-pille-frist');
+      else if (e.prioritaet === 'hoch') p.push('kal-pille-hoch');
+      const farbe = katFarbe(e.kategorie);
+      const vorn = e.mehrtaegig && !e.ersterTag ? '· ' : '';
+      pillen.push(`<div class="${p.join(' ')}" style="${farbe ? `--kat:${esc(farbe)}` : ''}">${vorn}${e.uhrzeit ? `${esc(e.uhrzeit)} ` : ''}${esc(e.text)}</div>`);
+    }
+    for (const a of aufgaben.slice(0, 2)) {
+      pillen.push(`<div class="kal-pille kal-pille-aufgabe">${esc(a.titel)}</div>`);
+    }
+    const rest = (eintraege.length + aufgaben.length) - pillen.length;
+
+    return `<div class="${klassen.join(' ')}" data-tag="${tag}">
+      <span class="kal-tag-nr">${Number(tag.slice(8))}</span>
+      ${pillen.join('')}
+      ${rest > 0 ? `<span class="kal-mehr">+${rest} weitere</span>` : ''}
+    </div>`;
+  }).join('');
+
+  if (S.gewaehlterTag) tagZeichnen(S.gewaehlterTag);
+};
+
+const tagZeichnen = (tag) => {
+  S.gewaehlterTag = tag;
+  const eintraege = S.monat.tage[tag] || [];
+  const aufgaben = (S.monat.aufgaben[tag] || []).map((a) => S.tasks.find((t) => t.id === a.id)).filter(Boolean);
+
+  $('#tag-block').classList.remove('versteckt');
+  $('#tag-titel').innerHTML = `${TAGE_LANG[wochentagIndex(tag)]}, ${formatDE(tag)}
+    <span class="block-neben"><button class="knopf knopf-still" id="tag-neu">Eintrag für diesen Tag</button></span>`;
+
+  const alles = [...eintraege.map((e) => zeile(e)), ...aufgaben.map(aufgabenZeile)];
+  $('#tag-liste').innerHTML = alles.length ? alles.join('') : leer('Nichts eingetragen.');
+  $('#tag-neu').addEventListener('click', () => eintragDialog({ datum: tag }));
+};
+
+$('#kal-gitter').addEventListener('click', (e) => {
+  const tag = e.target.closest('.kal-tag');
+  if (!tag) return;
+  tagZeichnen(tag.dataset.tag);
+  $$('.kal-tag').forEach((el) => el.classList.toggle('kal-tag-gewaehlt', el.dataset.tag === S.gewaehlterTag));
+});
+
+$('#kal-zurueck').addEventListener('click', fangen(() => {
+  S.kalMonat -= 1;
+  if (S.kalMonat < 1) { S.kalMonat = 12; S.kalJahr -= 1; }
+  return monatLaden();
+}));
+
+$('#kal-vor').addEventListener('click', fangen(() => {
+  S.kalMonat += 1;
+  if (S.kalMonat > 12) { S.kalMonat = 1; S.kalJahr += 1; }
+  return monatLaden();
+}));
+
+$('#kal-heute').addEventListener('click', fangen(() => {
+  const jetzt = new Date();
+  S.kalJahr = jetzt.getFullYear();
+  S.kalMonat = jetzt.getMonth() + 1;
+  S.gewaehlterTag = heuteISO();
+  return monatLaden();
+}));
+
+$('#kal-neu').addEventListener('click', () => eintragDialog({ datum: S.gewaehlterTag || S.heute || heuteISO() }));
+
+// ---------------------------------------------------------------- Aufgaben
+
+const aufgabenZeichnen = () => {
+  for (const status of ['offen', 'laeuft', 'erledigt']) {
+    const liste = S.tasks
+      .filter((t) => t.status === status)
+      .sort((a, b) => {
+        const rang = { hoch: 0, mittel: 1, gering: 2 };
+        const p = rang[a.prioritaet] - rang[b.prioritaet];
+        if (p) return p;
+        return String(a.faellig || '9999').localeCompare(String(b.faellig || '9999'));
+      });
+    const ziel = document.querySelector(`[data-liste="${status}"]`);
+    ziel.innerHTML = liste.length ? liste.map(aufgabenZeile).join('') : leer('—');
+  }
+};
+
+$('#aufgabe-neu').addEventListener('click', () => aufgabeDialog({}));
+
+// ---------------------------------------------------------------- Suche
+
+const bereicheFuellen = () => {
+  const aktuell = $('#such-bereich').value;
+  $('#such-bereich').innerHTML = [
+    '<option value="alle">überall</option>',
+    '<option value="aufgaben">nur Aufgaben</option>',
+    ...S.kategorien.map((k) => `<option value="${esc(k.id)}">nur ${esc(k.name)}</option>`)
+  ].join('');
+  if (aktuell) $('#such-bereich').value = aktuell;
+};
+
+const suchen = fangen(async () => {
+  const q = $('#such-feld').value.trim();
+  if (!q) {
+    $('#such-treffer').innerHTML = '';
+    $('#such-info').textContent = '';
+    return;
+  }
+  const d = await api(`/api/suche?q=${encodeURIComponent(q)}&scope=${encodeURIComponent($('#such-bereich').value)}`);
+  const teile = [];
+  if (d.entries.length) {
+    teile.push('<p class="treffer-gruppe">EINTRÄGE — neueste zuerst</p>');
+    teile.push(d.entries.map((e) => zeile({
+      ...e, start: e.datum, wiederkehrend: Boolean(e.wiederholung), mehrtaegig: Boolean(e.datumBis)
+    }, { zeitText: formatKurz(e.datum) })).join(''));
+  }
+  if (d.tasks.length) {
+    teile.push('<p class="treffer-gruppe">AUFGABEN</p>');
+    teile.push(d.tasks.map(aufgabenZeile).join(''));
+  }
+  const gesamt = d.entries.length + d.tasks.length;
+  $('#such-info').textContent = gesamt ? `${gesamt} Treffer für „${q}"` : `Keine Treffer für „${q}"`;
+  $('#such-treffer').innerHTML = teile.join('');
+});
+
+$('#such-feld').addEventListener('input', () => { clearTimeout(suchen.t); suchen.t = setTimeout(suchen, 180); });
+$('#such-bereich').addEventListener('change', suchen);
+
+// ---------------------------------------------------------------- Kategorien
+
+const katZeichnen = () => {
+  $('#kat-liste').innerHTML = S.kategorien.map((k) => `
+    <div class="kat-zeile" data-id="${esc(k.id)}">
+      <input class="feld feld-farbe" type="color" value="${esc(k.farbe)}" data-farbe>
+      <input class="feld" type="text" value="${esc(k.name)}" data-name>
+      <button class="knopf knopf-still" data-speichern>Sichern</button>
+      <button class="knopf knopf-gefahr" data-loeschen>Löschen</button>
+    </div>`).join('');
+};
+
+$('#kat-liste').addEventListener('click', fangen(async (e) => {
+  const zeileEl = e.target.closest('.kat-zeile');
+  if (!zeileEl) return;
+  const id = zeileEl.dataset.id;
+  if (e.target.hasAttribute('data-speichern')) {
+    await post('/api/kategorie', { id, name: zeileEl.querySelector('[data-name]').value, farbe: zeileEl.querySelector('[data-farbe]').value });
+    await datenLaden();
+    katZeichnen();
+    toast('Kategorie gesichert');
+  }
+  if (e.target.hasAttribute('data-loeschen')) {
+    await del(`/api/kategorie?id=${encodeURIComponent(id)}`);
+    await datenLaden();
+    katZeichnen();
+    toast('Kategorie gelöscht');
+  }
+}));
+
+$('#kat-anlegen').addEventListener('click', fangen(async () => {
+  const name = $('#kat-name').value.trim();
+  if (!name) throw new Error('Name fehlt.');
+  await post('/api/kategorie', { name, farbe: $('#kat-farbe').value });
+  $('#kat-name').value = '';
+  await datenLaden();
+  katZeichnen();
+  toast('Kategorie angelegt');
+}));
+
+// ---- Finanzkategorien verwalten -------------------------------------------
+
+const finkatZeichnen = () => {
+  $('#finkat-liste').innerHTML = S.finKategorien.length
+    ? S.finKategorien.map((k) => `
+      <div class="kat-zeile" data-id="${esc(k.id)}">
+        <input class="feld feld-farbe" type="color" value="${esc(k.farbe)}" data-farbe>
+        <input class="feld" type="text" value="${esc(k.name)}" data-name>
+        <button class="knopf knopf-still" data-speichern>Sichern</button>
+        <button class="knopf knopf-gefahr" data-loeschen>Löschen</button>
+      </div>`).join('')
+    : leer('Noch keine Finanzkategorien — sie entstehen beim ersten Import.');
+};
+
+const finkatLaden = async () => {
+  const d = await api('/api/finanzen');
+  S.finKategorien = d.kategorien;
+  finkatZeichnen();
+};
+
+$('#finkat-liste').addEventListener('click', fangen(async (e) => {
+  const zeileEl = e.target.closest('.kat-zeile');
+  if (!zeileEl) return;
+  const id = zeileEl.dataset.id;
+  if (e.target.hasAttribute('data-speichern')) {
+    await post('/api/finanzen/kategorie', {
+      id, name: zeileEl.querySelector('[data-name]').value, farbe: zeileEl.querySelector('[data-farbe]').value
+    });
+    await finkatLaden();
+    toast('Kategorie gesichert');
+  }
+  if (e.target.hasAttribute('data-loeschen')) {
+    // Der Server sperrt das Loeschen, solange Buchungen daran haengen (409).
+    await del(`/api/finanzen/kategorie?id=${encodeURIComponent(id)}`);
+    await finkatLaden();
+    toast('Kategorie gelöscht');
+  }
+}));
+
+$('#finkat-anlegen').addEventListener('click', fangen(async () => {
+  const name = $('#finkat-name').value.trim();
+  if (!name) throw new Error('Name fehlt.');
+  await post('/api/finanzen/kategorie', { name, farbe: $('#finkat-farbe').value });
+  $('#finkat-name').value = '';
+  $('#finkat-farbe').value = naechsteFarbe();
+  await finkatLaden();
+  toast('Kategorie angelegt');
+}));
+
+$('#pin-aendern').addEventListener('click', fangen(async () => {
+  await post('/api/pin', { alt: $('#pin-alt').value, neu: $('#pin-neu').value });
+  $('#pin-alt').value = '';
+  $('#pin-neu').value = '';
+  $('#pin-info').textContent = 'PIN geändert.';
+  toast('PIN geändert');
+}));
+
+// ---------------------------------------------------------------- Dialog
+
+let dialogSpeichern = null;
+let dialogLoeschen = null;
+
+const dialogOeffnen = (titel, inhalt, speichern, loeschen) => {
+  $('#dialog-titel').textContent = titel;
+  $('#dialog-inhalt').innerHTML = inhalt;
+  $('#dialog').classList.remove('versteckt');
+  $('#dialog-loeschen').classList.toggle('versteckt', !loeschen);
+  dialogSpeichern = speichern;
+  dialogLoeschen = loeschen;
+  const erstes = $('#dialog-inhalt').querySelector('input, textarea, select');
+  if (erstes) erstes.focus();
+};
+
+const dialogSchliessen = () => {
+  $('#dialog').classList.add('versteckt');
+  $('#dialog-inhalt').innerHTML = '';
+  dialogSpeichern = null;
+  dialogLoeschen = null;
+};
+
+$('#dialog-zu').addEventListener('click', dialogSchliessen);
+$('#dialog').addEventListener('click', (e) => { if (e.target.id === 'dialog') dialogSchliessen(); });
+$('#dialog-speichern').addEventListener('click', fangen(async () => { if (dialogSpeichern) await dialogSpeichern(); }));
+$('#dialog-loeschen').addEventListener('click', fangen(async () => { if (dialogLoeschen) await dialogLoeschen(); }));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#dialog').classList.contains('versteckt')) dialogSchliessen(); });
+
+const wahlFeld = (name, werte, aktiv, toene = {}) => `
+  <div class="wahl" data-wahl="${name}">
+    ${werte.map(([wert, label]) => `<button type="button" data-wert="${esc(wert)}" class="${wert === aktiv ? 'aktiv' : ''}" style="${toene[wert] ? `--ton:${toene[wert]}` : ''}">${esc(label)}</button>`).join('')}
+  </div>`;
+
+$('#dialog-inhalt').addEventListener('click', (e) => {
+  const knopf = e.target.closest('[data-wert]');
+  if (!knopf) return;
+  const gruppe = knopf.closest('[data-wahl]');
+  [...gruppe.querySelectorAll('[data-wert]')].forEach((b) => b.classList.toggle('aktiv', b === knopf));
+});
+
+const wahlWert = (name) => {
+  const aktiv = $(`[data-wahl="${name}"] .aktiv`);
+  return aktiv ? aktiv.dataset.wert : null;
+};
+
+const PRIO_TOENE = { gering: 'var(--neon-cyan)', mittel: 'var(--neon-amber)', hoch: 'var(--neon-koralle)' };
+
+const eintragDialog = (vorgabe) => {
+  const e = {
+    id: null, datum: S.heute || heuteISO(), datumBis: null, uhrzeit: null, text: '',
+    kategorie: null, prioritaet: 'mittel', istFrist: false, wiederholung: null, ...vorgabe
+  };
+
+  const inhalt = `
+    <div class="dialog-feld">
+      <label>Text</label>
+      <input class="feld" id="d-text" type="text" value="${esc(e.text)}" placeholder="Worum geht es?">
+    </div>
+    <div class="dialog-paar">
+      <div class="dialog-feld"><label>Datum</label><input class="feld" id="d-datum" type="date" value="${esc(e.datum)}"></div>
+      <div class="dialog-feld"><label>bis (optional, mehrtägig)</label><input class="feld" id="d-bis" type="date" value="${esc(e.datumBis || '')}"></div>
+    </div>
+    <div class="dialog-paar">
+      <div class="dialog-feld"><label>Uhrzeit (optional)</label><input class="feld" id="d-zeit" type="time" value="${esc(e.uhrzeit || '')}"></div>
+      <div class="dialog-feld"><label>Kategorie</label>
+        <select class="feld" id="d-kat">
+          <option value="">ohne</option>
+          ${S.kategorien.map((k) => `<option value="${esc(k.id)}" ${k.id === e.kategorie ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="dialog-feld"><label>Priorität</label>
+      ${wahlFeld('prio', [['gering', 'gering'], ['mittel', 'mittel'], ['hoch', 'hoch']], e.prioritaet, PRIO_TOENE)}
+    </div>
+    <div class="dialog-feld"><label>Wiederholung</label>
+      ${wahlFeld('wdh', [['', 'keine'], ['taeglich', 'täglich'], ['woechentlich', 'wöchentlich'], ['monatlich', 'monatlich'], ['jaehrlich', 'jährlich']], e.wiederholung ? e.wiederholung.typ : '')}
+    </div>
+    <div class="dialog-paar">
+      <div class="dialog-feld"><label>jede(n) … (Intervall)</label><input class="feld" id="d-intervall" type="number" min="1" max="52" value="${e.wiederholung ? e.wiederholung.intervall : 1}"></div>
+      <div class="dialog-feld"><label>Serie endet am (optional)</label><input class="feld" id="d-wdhbis" type="date" value="${esc(e.wiederholung && e.wiederholung.bis ? e.wiederholung.bis : '')}"></div>
+    </div>
+    <label class="dialog-schalter"><input type="checkbox" id="d-frist" ${e.istFrist ? 'checked' : ''}> Als Frist behandeln (erscheint 14 Tage vorher auf der Startseite)</label>`;
+
+  dialogOeffnen(e.id ? 'Eintrag bearbeiten' : 'Neuer Eintrag', inhalt, async () => {
+    const typ = wahlWert('wdh');
+    await post('/api/eintrag', {
+      id: e.id,
+      text: $('#d-text').value,
+      datum: $('#d-datum').value,
+      datumBis: $('#d-bis').value || null,
+      uhrzeit: $('#d-zeit').value || null,
+      kategorie: $('#d-kat').value || null,
+      prioritaet: wahlWert('prio'),
+      istFrist: $('#d-frist').checked,
+      wiederholung: typ ? { typ, intervall: Number($('#d-intervall').value) || 1, bis: $('#d-wdhbis').value || null } : null
+    });
+    dialogSchliessen();
+    toast('Gespeichert');
+    await neuZeichnen();
+  }, e.id ? async () => {
+    await del(`/api/eintrag?id=${encodeURIComponent(e.id)}`);
+    dialogSchliessen();
+    toast('Gelöscht');
+    await neuZeichnen();
+  } : null);
+};
+
+const aufgabeDialog = (vorgabe) => {
+  const t = { id: null, titel: '', notiz: '', status: 'offen', prioritaet: 'mittel', faellig: null, ...vorgabe };
+
+  const inhalt = `
+    <div class="dialog-feld"><label>Titel</label><input class="feld" id="a-titel" type="text" value="${esc(t.titel)}"></div>
+    <div class="dialog-feld"><label>Notiz</label><textarea class="feld" id="a-notiz" rows="4">${esc(t.notiz)}</textarea></div>
+    <div class="dialog-feld"><label>Status</label>
+      ${wahlFeld('status', [['offen', 'Offen'], ['laeuft', 'Läuft'], ['erledigt', 'Erledigt']], t.status,
+    { offen: 'var(--neon-cyan)', laeuft: 'var(--neon-amber)', erledigt: 'var(--neon-gruen)' })}
+    </div>
+    <div class="dialog-feld"><label>Priorität</label>
+      ${wahlFeld('prio', [['gering', 'gering'], ['mittel', 'mittel'], ['hoch', 'hoch']], t.prioritaet, PRIO_TOENE)}
+    </div>
+    <div class="dialog-feld"><label>Fällig am (optional — erscheint dann im Kalender)</label>
+      <input class="feld" id="a-faellig" type="date" value="${esc(t.faellig || '')}"></div>`;
+
+  dialogOeffnen(t.id ? 'Aufgabe bearbeiten' : 'Neue Aufgabe', inhalt, async () => {
+    await post('/api/aufgabe', {
+      id: t.id,
+      titel: $('#a-titel').value,
+      notiz: $('#a-notiz').value,
+      status: wahlWert('status'),
+      prioritaet: wahlWert('prio'),
+      faellig: $('#a-faellig').value || null
+    });
+    dialogSchliessen();
+    toast('Gespeichert');
+    await neuZeichnen();
+  }, t.id ? async () => {
+    await del(`/api/aufgabe?id=${encodeURIComponent(t.id)}`);
+    dialogSchliessen();
+    toast('Gelöscht');
+    await neuZeichnen();
+  } : null);
+};
+
+// ---------------------------------------------------------------- Klicks auf Zeilen
+
+document.addEventListener('click', fangen(async (e) => {
+  const ansichtSprung = e.target.closest('[data-ansicht-sprung]');
+  if (ansichtSprung) {
+    await ansichtWechseln(ansichtSprung.dataset.ansichtSprung);
+    return;
+  }
+
+  const sprung = e.target.closest('[data-springe-gemeinde]');
+  if (sprung) {
+    S.akteId = sprung.dataset.springeGemeinde;
+    await ansichtWechseln('tsz');
+    return;
+  }
+
+  // Aufgabe direkt aus der Gemeinden-Kachel abhaken.
+  const gemHaken = e.target.closest('[data-gem-haken]');
+  if (gemHaken) {
+    const aufgabe = gemHaken.closest('[data-gem-aufgabe]');
+    await post('/api/gemeinde/frist', {
+      gemeindeId: aufgabe.dataset.gemeinde,
+      id: aufgabe.dataset.gemAufgabe,
+      text: aufgabe.querySelector('.zeile-text').textContent,
+      datum: aufgabe.dataset.datum || null, // Datum erhalten, nicht beim Abhaken loeschen
+      erledigt: true
+    });
+    await startLaden();
+    toast('Erledigt');
+    return;
+  }
+
+  const leiste = e.target.closest('[data-gem-leiste]');
+  if (leiste) {
+    const id = leiste.dataset.gemLeiste;
+    if (S.offeneGemeinden.has(id)) S.offeneGemeinden.delete(id);
+    else S.offeneGemeinden.add(id);
+    await startLaden();
+    return;
+  }
+
+  const zeileEl = e.target.closest('.zeile');
+  if (!zeileEl || !zeileEl.dataset.art) return;
+
+  const haken = e.target.closest('[data-haken]');
+  if (haken) {
+    e.stopPropagation();
+    if (zeileEl.dataset.art === 'aufgabe') {
+      const t = S.tasks.find((x) => x.id === zeileEl.dataset.id);
+      if (!t) return;
+      await post('/api/aufgabe', { ...t, status: t.status === 'erledigt' ? 'offen' : 'erledigt' });
+    } else {
+      const erledigt = zeileEl.classList.contains('zeile-erledigt');
+      await post('/api/eintrag/erledigt', { id: zeileEl.dataset.id, datum: zeileEl.dataset.datum, wert: !erledigt });
+    }
+    await neuZeichnen();
+    return;
+  }
+
+  if (zeileEl.dataset.art === 'aufgabe') {
+    const t = S.tasks.find((x) => x.id === zeileEl.dataset.id);
+    if (t) aufgabeDialog(t);
+    return;
+  }
+
+  const daten = await api('/api/daten');
+  const eintrag = daten.entries.find((x) => x.id === zeileEl.dataset.id);
+  if (eintrag) eintragDialog(eintrag);
+}));
+
+// ---------------------------------------------------------------- Tierschutzzentrum
+
+const STAND_TON = {
+  erstkontakt: 'var(--neon-cyan)',
+  gespraech: 'var(--neon-violett)',
+  antrag: 'var(--neon-amber)',
+  zusage: 'var(--neon-gruen)',
+  absage: 'var(--text-still)'
+};
+
+const tszLaden = async () => {
+  const d = await api('/api/gemeinden');
+  S.gemeinden = d.gemeinden;
+  S.staende = d.staende;
+  S.heute = d.heute;
+  if (S.akteId && S.gemeinden.some((g) => g.id === S.akteId)) akteZeichnen();
+  else { S.akteId = null; uebersichtZeichnen(); }
+};
+
+const standName = (id) => (S.staende.find((s) => s.id === id) || { name: id }).name;
+
+const uebersichtZeichnen = () => {
+  $('#tsz-uebersicht').classList.remove('versteckt');
+  $('#tsz-akte').classList.add('versteckt');
+  $('#tsz-zurueck').classList.add('versteckt');
+  $('#tsz-titel').textContent = 'Tierschutzzentrum';
+
+  if (!S.gemeinden.length) {
+    $('#tsz-uebersicht').innerHTML = `<p class="liste-leer">Noch keine Gemeinde angelegt. Über „Neue Gemeinde" die erste Akte anlegen.</p>`;
+    return;
+  }
+
+  $('#tsz-uebersicht').innerHTML = S.gemeinden.map((g) => {
+    const still = g.tageStill === null
+      ? 'noch kein Schritt festgehalten'
+      : (g.tageStill === 0 ? 'heute zuletzt' : `seit ${g.tageStill} Tagen keine Bewegung`);
+    const lange = g.tageStill === null || g.tageStill >= 21;
+    const frist = g.naechsteFrist
+      ? `<div class="karte-frist">Frist ${esc(formatDE(g.naechsteFrist.datum))} — ${esc(g.naechsteFrist.text)}</div>`
+      : '';
+    const offen = g.offeneAufgaben
+      ? ` · ${g.offeneAufgaben} ${g.offeneAufgaben === 1 ? 'offene Aufgabe' : 'offene Aufgaben'}`
+      : '';
+    return `<article class="karte" data-gemeinde="${esc(g.id)}" style="--ton:${STAND_TON[g.stand] || 'var(--rand)'}">
+      <div class="karte-kopf">
+        <h3 class="karte-titel">${esc(g.name)}</h3>
+        <span class="zeile-marke zeile-marke-neon" style="--ton:${STAND_TON[g.stand] || 'var(--rand)'}">${esc(standName(g.stand))}</span>
+      </div>
+      ${g.ansprechpartner ? `<div class="karte-zeile">${esc(g.ansprechpartner)}</div>` : ''}
+      ${g.letzterSchritt ? `<div class="karte-zeile karte-still">zuletzt: ${esc(g.letzterSchritt)}</div>` : ''}
+      <div class="karte-zeile ${lange ? 'karte-warnung' : 'karte-still'}">${esc(still)}</div>
+      ${frist}
+      <div class="karte-fuss">${g.anzahlSchritte} ${g.anzahlSchritte === 1 ? 'Schritt' : 'Schritte'} · ${g.anzahlDateien} ${g.anzahlDateien === 1 ? 'Datei' : 'Dateien'}${offen}</div>
+    </article>`;
+  }).join('');
+};
+
+$('#tsz-uebersicht').addEventListener('click', fangen(async (e) => {
+  const karte = e.target.closest('[data-gemeinde]');
+  if (!karte) return;
+  S.akteId = karte.dataset.gemeinde;
+  akteZeichnen();
+}));
+
+$('#tsz-zurueck').addEventListener('click', () => { S.akteId = null; uebersichtZeichnen(); });
+$('#tsz-neu').addEventListener('click', () => gemeindeDialog({}));
+
+const akteZeichnen = () => {
+  const g = S.gemeinden.find((x) => x.id === S.akteId);
+  if (!g) { S.akteId = null; return uebersichtZeichnen(); }
+
+  $('#tsz-uebersicht').classList.add('versteckt');
+  $('#tsz-akte').classList.remove('versteckt');
+  $('#tsz-zurueck').classList.remove('versteckt');
+  $('#tsz-titel').textContent = g.name;
+
+  const verlauf = [...(g.verlauf || [])].sort((a, b) => (a.datum < b.datum ? 1 : -1));
+  // Datierte zuerst nach Datum, undatierte ans Ende. Ein Datum ist freiwillig.
+  const aufgaben = [...(g.fristen || [])].sort((a, b) => {
+    if (a.datum && b.datum) return a.datum.localeCompare(b.datum);
+    if (a.datum) return -1;
+    if (b.datum) return 1;
+    return 0;
+  });
+  const richtung = { raus: '→ verschickt', rein: '← erhalten', intern: '· intern' };
+
+  $('#tsz-akte').innerHTML = `
+    <section class="block">
+      <h2 class="block-titel">Stammdaten
+        <span class="block-neben"><button class="knopf knopf-still" data-tat="stamm">Bearbeiten</button></span>
+      </h2>
+      <div class="stamm">
+        <div><span class="stamm-label">Stand</span><span class="zeile-marke zeile-marke-neon" style="--ton:${STAND_TON[g.stand]}">${esc(standName(g.stand))}</span></div>
+        <div><span class="stamm-label">Ansprechpartner</span>${esc(g.ansprechpartner || '—')}</div>
+        <div><span class="stamm-label">Kontakt</span>${esc(g.kontakt || '—')}</div>
+      </div>
+      ${g.notiz ? `<p class="stamm-notiz">${esc(g.notiz)}</p>` : ''}
+    </section>
+
+    <section class="block">
+      <h2 class="block-titel">Verlauf
+        <span class="block-neben"><button class="knopf knopf-still" data-tat="verlauf-neu">Schritt festhalten</button></span>
+      </h2>
+      <div class="liste">
+        ${verlauf.length ? verlauf.map((v) => `
+          <div class="zeile" data-tat="verlauf" data-id="${esc(v.id)}">
+            <span class="zeile-zeit">${esc(formatKurz(v.datum))}</span>
+            <span class="zeile-text">${esc(v.text)}</span>
+            <span class="zeile-marke">${esc(richtung[v.richtung] || v.richtung)}</span>
+          </div>`).join('') : leer('Noch nichts festgehalten.')}
+      </div>
+    </section>
+
+    <section class="block">
+      <h2 class="block-titel">Aufgaben
+        <span class="block-neben"><button class="knopf knopf-still" data-tat="frist-neu">Aufgabe anlegen</button></span>
+      </h2>
+      <div class="liste">
+        ${aufgaben.length ? aufgaben.map((f) => {
+    // Ohne Datum gibt es weder Dringlichkeit noch Restlaufzeit.
+    const tage = f.datum ? Math.round((new Date(f.datum) - new Date(S.heute)) / 86400000) : null;
+    const klasse = f.erledigt ? 'zeile-erledigt'
+      : (tage === null ? '' : (tage <= 3 ? 'zeile-dringend' : (tage <= 14 ? 'zeile-frist' : '')));
+    const marke = f.erledigt ? 'erledigt'
+      : (tage === null ? 'ohne Datum' : (tage < 0 ? `${Math.abs(tage)} Tage überfällig` : `noch ${tage} Tage`));
+    return `<div class="zeile ${klasse}" data-tat="frist" data-id="${esc(f.id)}">
+            <span class="zeile-zeit">${esc(formatKurz(f.datum))}</span>
+            <span class="zeile-text">${esc(f.text)}</span>
+            <span class="zeile-marke${tage === null && !f.erledigt ? ' zeile-marke-blass' : ''}">${esc(marke)}</span>
+          </div>`;
+  }).join('') : leer('Keine Aufgabe hinterlegt.')}
+      </div>
+    </section>
+
+    <section class="block">
+      <h2 class="block-titel">Dateien
+        <span class="block-neben"><button class="knopf knopf-still" data-tat="datei-neu">Datei ablegen</button></span>
+      </h2>
+      <input type="file" id="datei-feld" class="versteckt" multiple>
+      <div class="liste">
+        ${(g.dateien || []).length ? g.dateien.map((d) => `
+          <div class="zeile" data-tat="datei" data-id="${esc(d.id)}">
+            <span class="zeile-text">${esc(d.name)}</span>
+            <span class="zeile-marke">${(d.groesse / 1024).toFixed(0)} KB</span>
+            <span class="zeile-marke" data-datei-laden="${esc(d.id)}">öffnen</span>
+            <span class="zeile-marke" data-datei-weg="${esc(d.id)}">löschen</span>
+          </div>`).join('') : leer('Keine Datei abgelegt.')}
+      </div>
+    </section>
+
+    <div class="reihe"><button class="knopf knopf-gefahr" data-tat="gemeinde-weg">Akte löschen</button></div>`;
+};
+
+$('#tsz-akte').addEventListener('click', fangen(async (e) => {
+  const g = S.gemeinden.find((x) => x.id === S.akteId);
+  if (!g) return;
+
+  const laden = e.target.closest('[data-datei-laden]');
+  if (laden) {
+    window.open(`/api/gemeinde/datei?gemeinde=${encodeURIComponent(g.id)}&id=${encodeURIComponent(laden.dataset.dateiLaden)}`, '_blank');
+    return;
+  }
+  const weg = e.target.closest('[data-datei-weg]');
+  if (weg) {
+    const name = (g.dateien.find((d) => d.id === weg.dataset.dateiWeg) || {}).name || 'diese Datei';
+    if (!confirm(`„${name}" wirklich löschen? Die Datei wird von der Platte entfernt.`)) return;
+    await del(`/api/gemeinde/datei?gemeinde=${encodeURIComponent(g.id)}&id=${encodeURIComponent(weg.dataset.dateiWeg)}`);
+    toast('Datei gelöscht');
+    return tszLaden();
+  }
+
+  const tat = e.target.closest('[data-tat]');
+  if (!tat) return;
+  const art = tat.dataset.tat;
+
+  if (art === 'stamm') return gemeindeDialog(g);
+  if (art === 'verlauf-neu') return verlaufDialog(g, {});
+  if (art === 'frist-neu') return fristDialog(g, {});
+  if (art === 'verlauf') return verlaufDialog(g, (g.verlauf || []).find((v) => v.id === tat.dataset.id) || {});
+  if (art === 'frist') return fristDialog(g, (g.fristen || []).find((f) => f.id === tat.dataset.id) || {});
+  if (art === 'datei-neu') return $('#datei-feld').click();
+  if (art === 'gemeinde-weg') {
+    if (!confirm(`Akte „${g.name}" mit ${(g.verlauf || []).length} Verlaufseinträgen wirklich löschen?`)) return;
+    await del(`/api/gemeinde?id=${encodeURIComponent(g.id)}`);
+    S.akteId = null;
+    toast('Akte gelöscht');
+    return tszLaden();
+  }
+  return null;
+}));
+
+$('#tsz-akte').addEventListener('change', fangen(async (e) => {
+  if (e.target.id !== 'datei-feld') return;
+  const g = S.gemeinden.find((x) => x.id === S.akteId);
+  for (const datei of [...e.target.files]) {
+    const antwort = await fetch(`/api/gemeinde/datei?gemeinde=${encodeURIComponent(g.id)}&name=${encodeURIComponent(datei.name)}`, {
+      method: 'POST',
+      headers: { 'X-HDD': '1', 'Content-Type': 'application/octet-stream' },
+      body: datei
+    });
+    const ergebnis = await antwort.json().catch(() => ({}));
+    if (ergebnis.fehler) throw new Error(`${datei.name}: ${ergebnis.fehler}`);
+  }
+  toast('Datei abgelegt');
+  await tszLaden();
+}));
+
+const gemeindeDialog = (g) => {
+  const inhalt = `
+    <div class="dialog-feld"><label>Gemeinde</label><input class="feld" id="g-name" type="text" value="${esc(g.name || '')}"></div>
+    <div class="dialog-feld"><label>Ansprechpartner</label><input class="feld" id="g-person" type="text" value="${esc(g.ansprechpartner || '')}" placeholder="Name, Amt"></div>
+    <div class="dialog-feld"><label>Kontakt</label><input class="feld" id="g-kontakt" type="text" value="${esc(g.kontakt || '')}" placeholder="Telefon, Mail"></div>
+    <div class="dialog-feld"><label>Stand</label>
+      ${wahlFeld('stand', S.staende.map((s) => [s.id, s.name]), g.stand || 'erstkontakt', STAND_TON)}
+    </div>
+    <div class="dialog-feld"><label>Notiz</label><textarea class="feld" id="g-notiz" rows="4">${esc(g.notiz || '')}</textarea></div>`;
+
+  dialogOeffnen(g.id ? 'Gemeinde bearbeiten' : 'Neue Gemeinde', inhalt, async () => {
+    const antwort = await post('/api/gemeinde', {
+      id: g.id || null,
+      name: $('#g-name').value,
+      ansprechpartner: $('#g-person').value,
+      kontakt: $('#g-kontakt').value,
+      stand: wahlWert('stand'),
+      notiz: $('#g-notiz').value
+    });
+    dialogSchliessen();
+    if (!g.id && antwort.gemeinde) S.akteId = antwort.gemeinde.id;
+    toast('Gespeichert');
+    await tszLaden();
+  }, null);
+};
+
+const verlaufDialog = (g, v) => {
+  const inhalt = `
+    <div class="dialog-feld"><label>Was ist passiert?</label>
+      <textarea class="feld" id="v-text" rows="3" placeholder="Förderantrag per Mail an das Bauamt geschickt">${esc(v.text || '')}</textarea></div>
+    <div class="dialog-paar">
+      <div class="dialog-feld"><label>Datum</label><input class="feld" id="v-datum" type="date" value="${esc(v.datum || S.heute)}"></div>
+      <div class="dialog-feld"><label>Richtung</label>
+        ${wahlFeld('richtung', [['raus', 'verschickt'], ['rein', 'erhalten'], ['intern', 'intern']], v.richtung || 'raus')}
+      </div>
+    </div>`;
+
+  dialogOeffnen(v.id ? 'Schritt bearbeiten' : 'Schritt festhalten', inhalt, async () => {
+    await post('/api/gemeinde/verlauf', {
+      gemeindeId: g.id, id: v.id || null,
+      text: $('#v-text').value, datum: $('#v-datum').value, richtung: wahlWert('richtung')
+    });
+    dialogSchliessen();
+    toast('Festgehalten');
+    await tszLaden();
+  }, v.id ? async () => {
+    await del(`/api/gemeinde/verlauf?gemeinde=${encodeURIComponent(g.id)}&id=${encodeURIComponent(v.id)}`);
+    dialogSchliessen();
+    toast('Gelöscht');
+    await tszLaden();
+  } : null);
+};
+
+const fristDialog = (g, f) => {
+  const inhalt = `
+    <div class="dialog-feld"><label>Aufgabe</label><input class="feld" id="f-text" type="text" value="${esc(f.text || '')}" placeholder="Antragsfrist Förderprogramm"></div>
+    <div class="dialog-feld"><label>Datum (optional)</label><input class="feld" id="f-datum" type="date" value="${esc(f.datum || '')}"></div>
+    <label class="dialog-schalter"><input type="checkbox" id="f-erledigt" ${f.erledigt ? 'checked' : ''}> erledigt</label>
+    <p class="hinweis">
+      Mit Datum erscheint die Aufgabe ab 14 Tagen vorher auf der Startseite und in der Tagesmail.
+      Ohne Datum steht sie nur hier und in der Gemeinden-Kachel der Startseite.
+    </p>`;
+
+  dialogOeffnen(f.id ? 'Aufgabe bearbeiten' : 'Neue Aufgabe', inhalt, async () => {
+    await post('/api/gemeinde/frist', {
+      gemeindeId: g.id, id: f.id || null,
+      text: $('#f-text').value, datum: $('#f-datum').value || null, erledigt: $('#f-erledigt').checked
+    });
+    dialogSchliessen();
+    toast('Gespeichert');
+    await tszLaden();
+  }, f.id ? async () => {
+    await del(`/api/gemeinde/frist?gemeinde=${encodeURIComponent(g.id)}&id=${encodeURIComponent(f.id)}`);
+    dialogSchliessen();
+    toast('Gelöscht');
+    await tszLaden();
+  } : null);
+};
+
+// ---------------------------------------------------------------- Finanzen
+
+const euro = (n) => `${n < 0 ? '−' : ''}${Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+
+const finKategorie = (id) => (S.finKategorien || []).find((k) => k.id === id) || null;
+
+const zeitraumWahl = () => {
+  const jetzt = S.heute || heuteISO();
+  const jahr = Number(jetzt.slice(0, 4));
+  const monat = jetzt.slice(0, 7);
+  const auswahl = [
+    { wert: `${monat}-01|${monat}-31`, label: 'laufender Monat' },
+    { wert: `${jahr}-01-01|${jahr}-12-31`, label: `Jahr ${jahr}` },
+    { wert: `${jahr - 1}-01-01|${jahr - 1}-12-31`, label: `Jahr ${jahr - 1}` },
+    { wert: '|', label: 'alles' }
+  ];
+  const feld = $('#fin-zeitraum');
+  const vorher = feld.value;
+  feld.innerHTML = auswahl.map((a) => `<option value="${esc(a.wert)}">${esc(a.label)}</option>`).join('');
+  if (vorher && auswahl.some((a) => a.wert === vorher)) feld.value = vorher;
+};
+
+const finanzenLaden = async () => {
+  if (!$('#fin-zeitraum').options.length) zeitraumWahl();
+  const [von, bis] = ($('#fin-zeitraum').value || '|').split('|');
+  const bereich = $('#fin-bereich').value;
+  const suchparameter = new URLSearchParams();
+  if (von) suchparameter.set('von', von);
+  if (bis) suchparameter.set('bis', bis);
+  if (bereich) suchparameter.set('bereich', bereich);
+
+  const d = await api(`/api/finanzen?${suchparameter}`);
+  S.finKategorien = d.kategorien;
+  S.finBuchungen = d.buchungen;
+
+  $('#fin-leer').classList.toggle('versteckt', d.anzahl > 0);
+  finanzenZeichnen(d);
+};
+
+const finanzenZeichnen = (d) => {
+  if (!d.anzahl) { $('#fin-uebersicht').innerHTML = ''; return; }
+
+  const groesste = Math.max(...d.jeKategorie.map((k) => k.summe), 1);
+  const balken = d.jeKategorie.map((k) => {
+    const kat = finKategorie(k.kategorie);
+    const farbe = kat ? kat.farbe : 'var(--rand-hell)';
+    const name = kat ? kat.name : 'ohne Kategorie';
+    return `<div class="bal-zeile">
+      <span class="bal-name">${esc(name)}</span>
+      <span class="bal-spur"><span class="bal-fuell" style="width:${(k.summe / groesste * 100).toFixed(1)}%;--ton:${esc(farbe)}"></span></span>
+      <span class="bal-wert">${esc(euro(k.summe))}</span>
+      <span class="bal-anzahl">${k.anzahl}</span>
+    </div>`;
+  }).join('');
+
+  const monate = d.jeMonat.length > 1 ? `
+    <section class="block">
+      <h2 class="block-titel">Monate</h2>
+      <div class="liste">
+        ${d.jeMonat.map((m) => `<div class="zeile">
+          <span class="zeile-zeit">${esc(m.monat)}</span>
+          <span class="zeile-text"></span>
+          <span class="zeile-marke zeile-marke-neon" style="--ton:var(--neon-gruen)">+${esc(euro(m.einnahmen))}</span>
+          <span class="zeile-marke zeile-marke-neon" style="--ton:var(--neon-koralle)">−${esc(euro(m.ausgaben))}</span>
+          <span class="zeile-marke">${esc(euro(m.einnahmen - m.ausgaben))}</span>
+        </div>`).join('')}
+      </div>
+    </section>` : '';
+
+  $('#fin-uebersicht').innerHTML = `
+    <section class="block">
+      <h2 class="block-titel">Übersicht <span class="block-neben">${d.anzahl} Buchungen${d.umbuchungen ? `, davon ${d.umbuchungen} Umbuchungen nicht gezählt` : ''}</span></h2>
+      <div class="kachel-zahlen">
+        <div class="kachel-wert"><span class="kachel-label">Einnahmen</span><span class="kachel-zahl kachel-plus">${esc(euro(d.einnahmen))}</span></div>
+        <div class="kachel-wert"><span class="kachel-label">Ausgaben</span><span class="kachel-zahl kachel-minus">${esc(euro(d.ausgaben))}</span></div>
+        <div class="kachel-wert"><span class="kachel-label">Saldo</span><span class="kachel-zahl">${esc(euro(d.saldo))}</span></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2 class="block-titel">Ausgaben nach Kategorie</h2>
+      <div class="balken">${balken || leer('Keine Ausgaben im Zeitraum.')}</div>
+    </section>
+
+    ${monate}
+
+    <section class="block">
+      <h2 class="block-titel">Buchungen <span class="block-neben">neueste zuerst, höchstens 400</span></h2>
+      <div class="liste">
+        ${d.buchungen.map((b) => {
+    const kat = finKategorie(b.kategorie);
+    return `<div class="zeile" data-buchung="${esc(b.id)}" style="${kat ? `--kat:${esc(kat.farbe)}` : ''}">
+          <span class="zeile-zeit">${esc(formatKurz(b.datum))}</span>
+          <span class="zeile-text">${esc(b.text)}</span>
+          ${b.umbuchung ? '<span class="zeile-marke">Umbuchung</span>' : ''}
+          ${b.bereich === 'geschaeftlich' ? '<span class="zeile-marke zeile-marke-neon" style="--ton:var(--neon-violett)">geschäftlich</span>' : ''}
+          <span class="zeile-marke">${esc(kat ? kat.name : 'ohne Kategorie')}</span>
+          <span class="zeile-marke">${esc(b.bank)}</span>
+          <span class="bal-wert ${b.betrag < 0 ? 'kachel-minus' : 'kachel-plus'}">${esc(euro(b.betrag))}</span>
+        </div>`;
+  }).join('')}
+      </div>
+    </section>`;
+};
+
+$('#fin-zeitraum').addEventListener('change', fangen(finanzenLaden));
+$('#fin-bereich').addEventListener('change', fangen(finanzenLaden));
+$('#fin-import').addEventListener('click', () => $('#fin-datei').click());
+
+$('#fin-uebersicht').addEventListener('click', fangen(async (e) => {
+  const zeileEl = e.target.closest('[data-buchung]');
+  if (!zeileEl) return;
+  const buchung = S.finBuchungen.find((b) => b.id === zeileEl.dataset.buchung);
+  if (buchung) buchungDialog(buchung);
+}));
+
+/* --------------------------------------------------- Finanzkategorien anlegen
+
+   Ein "+ neue Kategorie" steht in jedem Auswahlfeld. Nach dem Anlegen werden
+   alle offenen Felder neu gefuellt, damit eine im Importfenster erfundene
+   Kategorie sofort auch in den anderen Zeilen waehlbar ist.                  */
+
+const NEU_WERT = '__neu';
+
+const katOptionen = (gewaehlt) => `
+  <option value="">ohne</option>
+  ${S.finKategorien.map((k) => `<option value="${esc(k.id)}" ${k.id === gewaehlt ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}
+  <option value="${NEU_WERT}">+ neue Kategorie …</option>`;
+
+/** Der Platzhalter "+ neue Kategorie" ist nie ein gueltiger Wert. */
+const katWert = (feld) => (feld && feld.value && feld.value !== NEU_WERT ? feld.value : null);
+
+const NEON_REIHE = ['#3ddc84', '#34e2e2', '#ff5fd2', '#ffb454', '#a988ff', '#ff7a6b'];
+const naechsteFarbe = () => NEON_REIHE[S.finKategorien.length % NEON_REIHE.length];
+
+/** Alle Auswahlfelder neu fuellen, ohne die getroffene Wahl zu verlieren. */
+const katFelderAuffrischen = (ausser = null) => {
+  for (const feld of $$('[data-katfeld]')) {
+    if (feld === ausser) continue;
+    const wert = feld.value === NEU_WERT ? '' : feld.value;
+    feld.innerHTML = katOptionen(wert);
+    feld.value = wert;
+  }
+};
+
+/**
+ * Auf "+ neue Kategorie" reagieren: Namensfeld einblenden, anlegen, auswaehlen.
+ * Bricht der Benutzer ab, faellt das Feld auf die vorige Wahl zurueck.
+ */
+const katFeldBehandeln = async (feld) => {
+  if (feld.value !== NEU_WERT) { feld.dataset.vorher = feld.value; return; }
+
+  const zurueck = feld.dataset.vorher || '';
+  const name = window.prompt('Name der neuen Finanzkategorie:', '');
+  if (!name || !name.trim()) { feld.value = zurueck; return; }
+
+  const antwort = await post('/api/finanzen/kategorie', { name: name.trim(), farbe: naechsteFarbe() });
+  S.finKategorien = antwort.kategorien;
+  const neu = S.finKategorien.find((k) => k.name === name.trim());
+  feld.innerHTML = katOptionen(neu ? neu.id : zurueck);
+  feld.value = neu ? neu.id : zurueck;
+  feld.dataset.vorher = feld.value;
+  katFelderAuffrischen(feld);
+  toast('Kategorie angelegt');
+};
+
+document.addEventListener('change', fangen(async (e) => {
+  const feld = e.target.closest('[data-katfeld]');
+  if (feld) await katFeldBehandeln(feld);
+}));
+
+const buchungDialog = (b) => {
+  const inhalt = `
+    <div class="dialog-feld"><label>Buchung</label>
+      <p class="hinweis" style="margin:0">${esc(formatDE(b.datum))} · ${esc(b.bank)} · <strong>${esc(euro(b.betrag))}</strong><br>${esc(b.text)}${b.verwendung ? `<br><span class="vp-zeile">${esc(b.verwendung)}</span>` : ''}</p>
+    </div>
+    <div class="dialog-feld"><label>Kategorie</label>
+      <select class="feld" id="b-kat" data-katfeld data-vorher="${esc(b.kategorie || '')}">${katOptionen(b.kategorie)}</select>
+    </div>
+    <div class="dialog-feld"><label>Bereich</label>
+      ${wahlFeld('bereich', [['privat', 'privat'], ['geschaeftlich', 'geschäftlich']], b.bereich,
+    { privat: 'var(--neon-cyan)', geschaeftlich: 'var(--neon-violett)' })}
+    </div>
+    <label class="dialog-schalter"><input type="checkbox" id="b-umbuchung" ${b.umbuchung ? 'checked' : ''}> Umbuchung zwischen eigenen Konten (zählt weder als Einnahme noch als Ausgabe)</label>
+    <div class="dialog-feld"><label>Regel merken (optional)</label>
+      <input class="feld" id="b-muster" type="text" placeholder="Textstück, z. B. REWE — leer lassen für keine Regel">
+      <p class="hinweis" style="margin-top:4px">Künftige Buchungen mit diesem Textstück bekommen automatisch dieselbe Kategorie.</p>
+    </div>`;
+
+  dialogOeffnen('Buchung zuordnen', inhalt, async () => {
+    const gewaehlt = $('#b-kat').value;
+    const kategorie = (gewaehlt && gewaehlt !== NEU_WERT) ? gewaehlt : null;
+    const bereich = wahlWert('bereich');
+    await post('/api/finanzen/buchung', { id: b.id, kategorie, bereich, umbuchung: $('#b-umbuchung').checked });
+    const muster = $('#b-muster').value.trim();
+    if (muster) await post('/api/finanzen/regel', { muster, kategorie, bereich });
+    dialogSchliessen();
+    toast(muster ? 'Gespeichert, Regel angelegt' : 'Gespeichert');
+    await finanzenLaden();
+  }, null);
+};
+
+// ---- Import ---------------------------------------------------------------
+
+$('#fin-datei').addEventListener('change', fangen(async (e) => {
+  const dateien = [...e.target.files];
+  e.target.value = '';
+  for (const datei of dateien) {
+    toast(`${datei.name} wird gelesen …`);
+    const antwort = await fetch(`/api/finanzen/pdf?name=${encodeURIComponent(datei.name)}`, {
+      method: 'POST',
+      headers: { 'X-HDD': '1', 'Content-Type': 'application/pdf' },
+      body: datei
+    });
+    const d = await antwort.json().catch(() => ({}));
+    if (d.fehler) throw new Error(`${datei.name}: ${d.fehler}`);
+    S.finKategorien = d.kategorien;
+    importZeichnen(d);
+    return; // eine Datei nach der anderen bestätigen
+  }
+}));
+
+const importZeichnen = (d) => {
+  S.importDaten = d;
+  const block = $('#fin-import-block');
+  block.classList.remove('versteckt');
+
+  const pruefung = d.pruefung || {};
+  const ampel = pruefung.stimmt === true ? 'gut' : (pruefung.stimmt === false ? 'schlecht' : 'unklar');
+
+  block.innerHTML = `
+    <h2 class="block-titel">Kontrolle vor der Übernahme
+      <span class="block-neben">${esc(d.dateiName)} · ${esc(d.bank)}${d.konto ? ` · ${esc(d.konto)}` : ''}</span>
+    </h2>
+    <div class="pruef pruef-${ampel}">
+      <div><strong>${d.zeilen.length}</strong> Buchungen erkannt, Zeitraum ${esc(formatDE(d.von) || '?')} bis ${esc(formatDE(d.bis) || '?')}</div>
+      <div>Eingehend ${esc(euro(pruefung.eingehend || 0))} · Ausgehend ${esc(euro(Math.abs(pruefung.ausgehend || 0)))} · Summe ${esc(euro(pruefung.summe || 0))}</div>
+      <div class="pruef-text">${esc(pruefung.hinweis || 'Keine Gegenprobe im Auszug gefunden — bitte stichprobenartig vergleichen.')}</div>
+      ${d.schonImportiert ? `<div class="pruef-text">Diese Datei wurde am ${esc(formatDE(d.schonImportiert.zeit.slice(0, 10)))} schon einmal eingelesen.</div>` : ''}
+      ${d.dubletten ? `<div class="pruef-text">${d.dubletten} Buchungen sind bereits vorhanden und sind nicht angehakt.</div>` : ''}
+    </div>
+
+    <div class="reihe" style="margin:10px 0">
+      <button class="knopf knopf-still" data-alle="1">Alle anhaken</button>
+      <button class="knopf knopf-still" data-alle="0">Alle abwählen</button>
+      <span class="hinweis" id="import-zaehler"></span>
+    </div>
+
+    <div class="import-tabelle">
+      ${d.zeilen.map((z, i) => `
+        <div class="import-zeile ${z.dublette ? 'import-dublette' : ''}" data-i="${i}">
+          <input type="checkbox" data-an ${z.uebernehmen ? 'checked' : ''}>
+          <span class="import-datum">${esc(formatKurz(z.datum))}</span>
+          <span class="import-text" title="${esc(z.verwendung || '')}">${esc(z.text)}</span>
+          <select class="feld import-kat" data-kat data-katfeld data-vorher="${esc(z.kategorie || '')}">${katOptionen(z.kategorie)}</select>
+          <select class="feld import-bereich" data-bereich>
+            <option value="privat" ${z.bereich === 'privat' ? 'selected' : ''}>privat</option>
+            <option value="geschaeftlich" ${z.bereich === 'geschaeftlich' ? 'selected' : ''}>geschäftlich</option>
+          </select>
+          <span class="bal-wert ${z.betrag < 0 ? 'kachel-minus' : 'kachel-plus'}">${esc(euro(z.betrag))}</span>
+          <span class="import-quelle">${esc(z.dublette ? 'schon vorhanden' : (z.quelle || (z.neueKategorie ? `Auszug: ${z.neueKategorie}` : '—')))}</span>
+        </div>`).join('')}
+    </div>
+
+    <div class="reihe" style="margin-top:12px">
+      <button class="knopf knopf-neon" id="import-uebernehmen">Angehakte übernehmen</button>
+      <button class="knopf knopf-still" id="import-abbrechen">Verwerfen</button>
+    </div>`;
+
+  zaehlerAktualisieren();
+  block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+const zaehlerAktualisieren = () => {
+  const an = $$('#fin-import-block [data-an]').filter((c) => c.checked).length;
+  const zaehler = $('#import-zaehler');
+  if (zaehler) zaehler.textContent = `${an} von ${S.importDaten.zeilen.length} ausgewählt`;
+};
+
+$('#fin-import-block').addEventListener('change', () => zaehlerAktualisieren());
+
+$('#fin-import-block').addEventListener('click', fangen(async (e) => {
+  const alle = e.target.closest('[data-alle]');
+  if (alle) {
+    $$('#fin-import-block [data-an]').forEach((c) => { c.checked = alle.dataset.alle === '1'; });
+    zaehlerAktualisieren();
+    return;
+  }
+  if (e.target.id === 'import-abbrechen') {
+    S.importDaten = null;
+    $('#fin-import-block').classList.add('versteckt');
+    $('#fin-import-block').innerHTML = '';
+    return;
+  }
+  if (e.target.id !== 'import-uebernehmen') return;
+
+  const zeilen = $$('#fin-import-block .import-zeile').map((el) => {
+    const quelle = S.importDaten.zeilen[Number(el.dataset.i)];
+    return {
+      ...quelle,
+      uebernehmen: el.querySelector('[data-an]').checked,
+      kategorie: katWert(el.querySelector('[data-kat]')),
+      bereich: el.querySelector('[data-bereich]').value
+    };
+  });
+
+  const ergebnis = await post('/api/finanzen/import', {
+    bank: S.importDaten.bank,
+    konto: S.importDaten.konto,
+    von: S.importDaten.von,
+    bis: S.importDaten.bis,
+    dateiName: S.importDaten.dateiName,
+    dateiHash: S.importDaten.dateiHash,
+    zeilen
+  });
+
+  S.importDaten = null;
+  $('#fin-import-block').classList.add('versteckt');
+  $('#fin-import-block').innerHTML = '';
+  toast(`${ergebnis.uebernommen} Buchungen übernommen, ${ergebnis.uebersprungen} übersprungen`);
+  await finanzenLaden();
+}));
+
+// ---- Regeln ---------------------------------------------------------------
+
+$('#fin-regeln').addEventListener('click', fangen(async () => {
+  const block = $('#fin-regel-block');
+  if (!block.classList.contains('versteckt')) {
+    block.classList.add('versteckt');
+    return;
+  }
+  const d = await api('/api/finanzen/regeln');
+  block.classList.remove('versteckt');
+  block.innerHTML = `
+    <h2 class="block-titel">Regeln <span class="block-neben">greifen beim nächsten Import automatisch</span></h2>
+    <div class="liste">
+      ${d.regeln.length ? d.regeln.map((r) => {
+    const kat = d.kategorien.find((k) => k.id === r.kategorie);
+    return `<div class="zeile" data-regel="${esc(r.id)}">
+        <span class="zeile-text">Text enthält „${esc(r.muster)}"</span>
+        <span class="zeile-marke">${esc(kat ? kat.name : 'ohne Kategorie')}</span>
+        ${r.bereich ? `<span class="zeile-marke">${esc(r.bereich === 'geschaeftlich' ? 'geschäftlich' : 'privat')}</span>` : ''}
+        <span class="zeile-marke" data-regel-weg="${esc(r.id)}">löschen</span>
+      </div>`;
+  }).join('') : leer('Noch keine Regel. Eine entsteht, wenn du beim Zuordnen einer Buchung ein Textstück angibst.')}
+    </div>
+    <div class="reihe" style="margin-top:10px">
+      <button class="knopf knopf-still" id="regeln-anwenden">Auf Buchungen ohne Kategorie anwenden</button>
+    </div>
+    ${d.importe.length ? `<h2 class="block-titel" style="margin-top:16px">Zuletzt eingelesen</h2>
+      <div class="liste">${d.importe.map((i) => `<div class="zeile">
+        <span class="zeile-zeit">${esc(formatKurz(i.zeit.slice(0, 10)))}</span>
+        <span class="zeile-text">${esc(i.datei)}</span>
+        <span class="zeile-marke">${esc(i.bank)}</span>
+        <span class="zeile-marke">${i.anzahl} übernommen</span>
+      </div>`).join('')}</div>` : ''}`;
+}));
+
+$('#fin-regel-block').addEventListener('click', fangen(async (e) => {
+  const weg = e.target.closest('[data-regel-weg]');
+  if (weg) {
+    await del(`/api/finanzen/regel?id=${encodeURIComponent(weg.dataset.regelWeg)}`);
+    toast('Regel gelöscht');
+    $('#fin-regel-block').classList.add('versteckt');
+    $('#fin-regeln').click();
+    return;
+  }
+  if (e.target.id === 'regeln-anwenden') {
+    const d = await post('/api/finanzen/regeln/anwenden', { nurLeere: true });
+    toast(`${d.geaendert} Buchungen zugeordnet`);
+    await finanzenLaden();
+  }
+}));
+
+// ---------------------------------------------------------------- Einstellungen: Thema und Mail
+
+const THEMA_TEXT = {
+  kante: 'Neonkante — mattschwarz, kompakt, Farbe ausschließlich als Rand. Viel Information auf wenig Fläche.',
+  ruhe: 'Ruhige Karten — etwas hellerer Grafitgrund, mehr Luft, größere Schrift, gedämpftere Ränder. Angenehmer über längere Zeit.',
+  linie: 'Linie — tiefes Schwarz, keine Kartenflächen, nur feine Neonlinien und Typografie. Am reduziertesten, am wenigsten ablenkend.'
+};
+
+const themaSetzen = (thema) => {
+  document.documentElement.dataset.thema = thema;
+  S.thema = thema;
+};
+
+/* ------------------------------------------------------------ Kachel-Editor
+
+   Verkleinertes Abbild derselben Layout-Daten, die auch die Startseite zeichnet.
+   Gezogen wird ueber Pointer-Ereignisse statt HTML5-Drag-and-Drop: das
+   funktioniert mit Maus und Finger gleichermassen und braucht nichts von aussen.
+*/
+
+const SPALTEN_TITEL = { voll: 'Volle Breite', 1: 'Spalte 1', 2: 'Spalte 2', 3: 'Spalte 3' };
+const SPALTEN_FOLGE = ['voll', 1, 2, 3];
+
+const kachelName = (id) => (S.kachelNamen.find((k) => k.id === id) || {}).name || id;
+
+const editorZeichnen = () => {
+  const layout = S.startseite;
+  if (!layout) return;
+
+  const spalte = (schluessel) => {
+    const drin = layout.kacheln.filter((k) => String(k.spalte) === String(schluessel));
+    const klasse = schluessel === 'voll' ? 'ed-spalte ed-voll' : 'ed-spalte';
+    return `<div class="${klasse}" data-ed-spalte="${schluessel}">
+      <span class="ed-spalte-kopf">${esc(SPALTEN_TITEL[schluessel])}</span>
+      ${drin.map((k, i) => {
+    const platz = SPALTEN_FOLGE.indexOf(k.spalte === 'voll' ? 'voll' : Number(k.spalte));
+    return `<div class="ed-kachel${k.sichtbar ? '' : ' ed-kachel-aus'}" data-ed-kachel="${esc(k.id)}">
+        <span class="ed-griff" data-ed-griff title="ziehen">≡</span>
+        <span class="ed-name">${esc(kachelName(k.id))}</span>
+        <button class="ed-knopf" data-ed-tat="links" title="Spalte nach links" ${platz <= 0 ? 'disabled' : ''}>‹</button>
+        <button class="ed-knopf" data-ed-tat="rechts" title="Spalte nach rechts" ${platz >= SPALTEN_FOLGE.length - 1 ? 'disabled' : ''}>›</button>
+        <button class="ed-knopf" data-ed-tat="hoch" title="nach oben" ${i === 0 ? 'disabled' : ''}>⬆</button>
+        <button class="ed-knopf" data-ed-tat="runter" title="nach unten" ${i === drin.length - 1 ? 'disabled' : ''}>⬇</button>
+        <button class="ed-knopf" data-ed-tat="sicht" title="${k.sichtbar ? 'ausblenden' : 'einblenden'}">⊙</button>
+      </div>`;
+  }).join('')}
+      ${drin.length ? '' : '<div class="ed-spalte-leer"></div>'}
+    </div>`;
+  };
+
+  $('#ed-raster').innerHTML = SPALTEN_FOLGE.map(spalte).join('');
+  $('#ed-vorlagen').innerHTML = S.vorlagen
+    .map((v) => `<button type="button" data-ed-vorlage="${esc(v.id)}" class="${v.id === layout.vorlage ? 'aktiv' : ''}">${esc(v.name)}</button>`)
+    .join('');
+};
+
+/** Layout sichern und beide Ansichten nachziehen. */
+const layoutSichern = async () => {
+  const antwort = await post('/api/einstellungen', { startseite: S.startseite });
+  if (antwort.startseite) S.startseite = antwort.startseite;
+  editorZeichnen();
+  kachelnEinsortieren();
+};
+
+/** Kachel an eine Stelle setzen: gleiche Spalte verschieben oder Spalte wechseln. */
+const kachelSetzen = (id, spalte, vorId = null) => {
+  const liste = S.startseite.kacheln;
+  const platz = liste.find((k) => k.id === id);
+  if (!platz) return;
+  platz.spalte = spalte;
+
+  liste.splice(liste.indexOf(platz), 1);
+  const ziel = vorId ? liste.findIndex((k) => k.id === vorId) : -1;
+  if (ziel === -1) liste.push(platz);
+  else liste.splice(ziel, 0, platz);
+};
+
+$('#ed-raster').addEventListener('click', fangen(async (e) => {
+  const knopf = e.target.closest('[data-ed-tat]');
+  if (!knopf) return;
+  const id = knopf.closest('[data-ed-kachel]').dataset.edKachel;
+  const platz = S.startseite.kacheln.find((k) => k.id === id);
+  if (!platz) return;
+
+  const tat = knopf.dataset.edTat;
+  if (tat === 'sicht') platz.sichtbar = !platz.sichtbar;
+
+  if (tat === 'links' || tat === 'rechts') {
+    const jetzt = SPALTEN_FOLGE.indexOf(platz.spalte === 'voll' ? 'voll' : Number(platz.spalte));
+    const neu = SPALTEN_FOLGE[jetzt + (tat === 'rechts' ? 1 : -1)];
+    if (neu !== undefined) kachelSetzen(id, neu, null);
+  }
+
+  if (tat === 'hoch' || tat === 'runter') {
+    const nachbarn = S.startseite.kacheln.filter((k) => String(k.spalte) === String(platz.spalte));
+    const i = nachbarn.indexOf(platz);
+    const ziel = nachbarn[i + (tat === 'runter' ? 1 : -1)];
+    if (ziel) {
+      // Beim Runterschieben vor den uebernaechsten setzen, sonst landet man wieder oben.
+      const dahinter = tat === 'runter' ? nachbarn[i + 2] : ziel;
+      kachelSetzen(id, platz.spalte, dahinter ? dahinter.id : null);
+    }
+  }
+
+  await layoutSichern();
+}));
+
+$('#ed-vorlagen').addEventListener('click', fangen(async (e) => {
+  const knopf = e.target.closest('[data-ed-vorlage]');
+  if (!knopf) return;
+  const antwort = await post('/api/einstellungen', { vorlage: knopf.dataset.edVorlage });
+  if (antwort.startseite) S.startseite = antwort.startseite;
+  editorZeichnen();
+  kachelnEinsortieren();
+  toast('Vorlage übernommen');
+}));
+
+// ---- Ziehen ---------------------------------------------------------------
+
+let zug = null;
+
+$('#ed-raster').addEventListener('pointerdown', (e) => {
+  const griff = e.target.closest('[data-ed-griff]');
+  if (!griff) return;
+  const kachel = griff.closest('[data-ed-kachel]');
+  e.preventDefault();
+
+  zug = { id: kachel.dataset.edKachel, schwebe: null, ziel: null };
+  kachel.classList.add('ed-kachel-zieht');
+  griff.setPointerCapture(e.pointerId);
+
+  zug.schwebe = document.createElement('div');
+  zug.schwebe.className = 'ed-schwebe';
+  zug.schwebe.textContent = kachelName(zug.id);
+  document.body.appendChild(zug.schwebe);
+  zugBewegen(e);
+});
+
+const zugBewegen = (e) => {
+  if (!zug) return;
+  zug.schwebe.style.left = `${e.clientX + 12}px`;
+  zug.schwebe.style.top = `${e.clientY + 12}px`;
+
+  const unter = document.elementFromPoint(e.clientX, e.clientY);
+  const spalte = unter && unter.closest('[data-ed-spalte]');
+  $$('[data-ed-spalte]').forEach((s) => s.classList.toggle('ed-ziel', s === spalte));
+
+  const ueber = unter && unter.closest('[data-ed-kachel]');
+  zug.ziel = spalte
+    ? { spalte: spalte.dataset.edSpalte, vor: ueber && ueber.dataset.edKachel !== zug.id ? ueber.dataset.edKachel : null }
+    : null;
+};
+
+$('#ed-raster').addEventListener('pointermove', zugBewegen);
+
+const zugBeenden = fangen(async () => {
+  if (!zug) return;
+  const { ziel, id } = zug;
+  zug.schwebe.remove();
+  zug = null;
+  $$('[data-ed-spalte]').forEach((s) => s.classList.remove('ed-ziel'));
+  $$('[data-ed-kachel]').forEach((k) => k.classList.remove('ed-kachel-zieht'));
+
+  if (!ziel) return editorZeichnen();
+  kachelSetzen(id, ziel.spalte === 'voll' ? 'voll' : Number(ziel.spalte), ziel.vor);
+  await layoutSichern();
+});
+
+$('#ed-raster').addEventListener('pointerup', zugBeenden);
+$('#ed-raster').addEventListener('pointercancel', zugBeenden);
+
+const einstellungenLaden = async () => {
+  const d = await api('/api/einstellungen');
+  themaSetzen(d.thema);
+  S.startseite = d.startseite;
+  S.kachelNamen = d.kacheln || [];
+  S.vorlagen = d.vorlagen || [];
+  editorZeichnen();
+  [...$('#thema-wahl').querySelectorAll('[data-wert]')].forEach((b) => b.classList.toggle('aktiv', b.dataset.wert === d.thema));
+  $('#thema-text').textContent = THEMA_TEXT[d.thema] || '';
+
+  $('#mail-aktiv').checked = d.mail.aktiv;
+  $('#mail-empfaenger').value = d.mail.empfaenger || '';
+  $('#mail-zeit').value = d.mail.uhrzeit;
+  $('#mail-schluessel').placeholder = d.mail.schluesselGesetzt
+    ? (d.mail.ausUmgebung ? 'aus Umgebungsvariable — Feld leer lassen' : 'hinterlegt — leer lassen, um ihn zu behalten')
+    : 'Web3Forms-Zugangsschlüssel';
+
+  const teile = [];
+  if (d.mail.letzterVersand) teile.push(`Zuletzt verschickt: ${formatDE(d.mail.letzterVersand)}.`);
+  if (d.mail.letzterFehler) teile.push(`Letzter Fehler — ${d.mail.letzterFehler}`);
+  if (!d.mail.schluesselGesetzt) teile.push('Ohne Schlüssel wird nichts verschickt.');
+  $('#mail-info').textContent = teile.join(' ');
+};
+
+$('#thema-wahl').addEventListener('click', fangen(async (e) => {
+  const knopf = e.target.closest('[data-wert]');
+  if (!knopf) return;
+  [...$('#thema-wahl').querySelectorAll('[data-wert]')].forEach((b) => b.classList.toggle('aktiv', b === knopf));
+  themaSetzen(knopf.dataset.wert);
+  $('#thema-text').textContent = THEMA_TEXT[knopf.dataset.wert] || '';
+  await post('/api/einstellungen', { thema: knopf.dataset.wert });
+}));
+
+$('#mail-sichern').addEventListener('click', fangen(async () => {
+  await post('/api/einstellungen', {
+    mail: {
+      aktiv: $('#mail-aktiv').checked,
+      empfaenger: $('#mail-empfaenger').value,
+      uhrzeit: $('#mail-zeit').value,
+      schluessel: $('#mail-schluessel').value
+    }
+  });
+  $('#mail-schluessel').value = '';
+  toast('Einstellungen gesichert');
+  await einstellungenLaden();
+}));
+
+$('#mail-vorschau').addEventListener('click', fangen(async () => {
+  const d = await post('/api/mail/vorschau');
+  const ziel = $('#mail-text');
+  ziel.classList.remove('versteckt');
+  ziel.textContent = d.leer
+    ? 'Für heute steht nichts an — es würde keine Mail verschickt.'
+    : `Betreff: ${d.betreff}\n\n${d.text}`;
+}));
+
+/**
+ * Versand über Web3Forms — bewusst aus der Seite heraus, nicht vom Server.
+ * Der Gratistarif von Web3Forms lehnt serverseitige Aufrufe mit 403 ab.
+ */
+const web3FormsSenden = async ({ schluessel, empfaenger, betreff, text }) => {
+  const koerper = { access_key: schluessel, subject: betreff, from_name: 'HDDatenbank', message: text };
+  if (empfaenger) koerper.email = empfaenger;
+  try {
+    const antwort = await fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(koerper)
+    });
+    const ergebnis = await antwort.json().catch(() => ({}));
+    if (!antwort.ok || ergebnis.success === false) {
+      return { ok: false, fehler: ergebnis.message || `Web3Forms antwortete mit ${antwort.status}` };
+    }
+    return { ok: true };
+  } catch (fehler) {
+    return { ok: false, fehler: `Keine Verbindung zu Web3Forms: ${fehler.message}` };
+  }
+};
+
+$('#mail-test').addEventListener('click', fangen(async () => {
+  if (!confirm('Jetzt eine echte Testmail verschicken?')) return;
+  const auftrag = await post('/api/mail/test');
+  const ergebnis = await web3FormsSenden(auftrag);
+  toast(ergebnis.ok ? 'Testmail verschickt' : `Fehlgeschlagen: ${ergebnis.fehler}`, !ergebnis.ok);
+  if (!ergebnis.ok) $('#mail-info').textContent = ergebnis.fehler;
+}));
+
+/**
+ * Wecker: fragt den Server, ob die Tagesmail dran ist, und schickt sie ab.
+ * Läuft, solange das Dashboard offen ist — der Autostart öffnet es bei jeder Anmeldung.
+ */
+const mailWecker = async () => {
+  try {
+    const auftrag = await api('/api/mail/faellig');
+    if (!auftrag.faellig) return;
+    const ergebnis = await web3FormsSenden(auftrag);
+    await post('/api/mail/quittung', { ok: ergebnis.ok, fehler: ergebnis.fehler });
+    if (ergebnis.ok) toast(auftrag.verspaetet ? 'Tagesmail nachträglich verschickt' : 'Tagesmail verschickt');
+  } catch { /* ein Mailproblem darf die Oberfläche nicht stören */ }
+};
+
+// ---------------------------------------------------------------- Neu zeichnen
+
+const neuZeichnen = async () => {
+  await datenLaden();
+  if (S.ansicht === 'start') return startLaden();
+  if (S.ansicht === 'kalender') return monatLaden();
+  if (S.ansicht === 'aufgaben') return aufgabenZeichnen();
+  if (S.ansicht === 'tsz') return tszLaden();
+  if (S.ansicht === 'finanzen') return finanzenLaden();
+  if (S.ansicht === 'suche') return suchen();
+  if (S.ansicht === 'einstellungen') return katZeichnen();
+  return null;
+};
+
+// ---------------------------------------------------------------- Start
+
+(async () => {
+  try {
+    const status = await api('/api/status');
+    if (status.angemeldet) await appZeigen();
+    else torZeigen(status.eingerichtet);
+  } catch (fehler) {
+    $('#tor-fehler').textContent = fehler.message;
+  }
+})();
