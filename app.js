@@ -10,9 +10,14 @@ import { alles as storeAlles, handyReihenfolge, MINDESTHOEHE } from './lib/store
 import * as sync from './lib/sync.js';
 import * as github from './lib/github.js';
 import * as spiegel from './lib/spiegel.js';
+import { FASSUNG } from './lib/fassung.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+// Steht in den Einstellungen. Zeigt sie eine alte Kennung, haelt der Browser
+// die Module unter lib/ noch fest — siehe lib/fassung.js.
+$('#fassung').textContent = FASSUNG;
 
 const S = {
   kategorien: [],
@@ -160,13 +165,13 @@ $('#tor-form').addEventListener('submit', fangen(async (ereignis) => {
   const passwort = $('#tor-pin').value;
   const ersteEinrichtung = $('#tor-form').dataset.modus === 'setup';
 
+  let start;
   try {
     if (ersteEinrichtung && passwort !== $('#tor-pin2').value) {
       throw new Error('Die beiden Passwörter stimmen nicht überein.');
     }
-    const ergebnis = await sync.starten({ passwort, ablage: ablageHolen() });
-    if (!ergebnis.ok) throw new Error(ergebnis.fehler);
-    if (ergebnis.hinweis) toast(`Ohne Verbindung gestartet: ${ergebnis.hinweis}`, true);
+    start = await sync.starten({ passwort, ablage: ablageHolen() });
+    if (!start.ok) throw new Error(start.fehler);
   } catch (fehler) {
     fehlerFeld.textContent = fehler.message;
     $('#tor-pin').select();
@@ -177,6 +182,12 @@ $('#tor-form').addEventListener('submit', fangen(async (ereignis) => {
   $('#tor-pin2').value = '';
   if (ersteEinrichtung) await sync.sichern('Erste Einrichtung');
   await appZeigen();
+
+  // Ohne Verbindung gestartet: der Balken sagt dauerhaft, von wann der Stand ist.
+  if (start.offline) ohneVerbindungSeit = start.standZeit;
+  abgleichAnzeigen(sync.zustand);
+  // Beide Seiten sind weitergelaufen — der einzige Fall, in dem gefragt wird.
+  if (start.konflikt) await konfliktZeigen();
 }));
 
 $('#abmelden').addEventListener('click', fangen(async () => {
@@ -202,9 +213,75 @@ const abgleichAnzeigen = (zustand) => {
     el.textContent = sync.hatFernablage() ? '✓ abgeglichen' : '✓ lokal gesichert';
     el.className = 'abgleich';
   }
+  warnbandPflegen(zustand);
 };
 
 sync.anmelden(abgleichAnzeigen);
+
+/* ---- Warnband unter dem Kopf -------------------------------------------------
+
+   Zwei Lagen darf man nicht uebersehen, und beide verschwinden nicht von selbst
+   aus dem Blick: die Anwendung zeigt einen alten Stand, weil GitHub nicht
+   erreichbar war, oder eigene Aenderungen liegen noch hier und sind drueben nie
+   angekommen. Eine kurz eingeblendete Meldung reicht dafuer nicht — wer sie
+   verpasst, haelt einen alten Stand fuer den aktuellen.                      */
+
+let ohneVerbindungSeit = null;   // Zeitpunkt des Standes, der ersatzweise gilt
+let wiederholung = null;         // Takt, laeuft nur solange etwas ansteht
+
+const zeitpunkt = (iso) => {
+  const d = new Date(iso || '');
+  if (Number.isNaN(d.getTime())) return '';
+  const zwei = (n) => String(n).padStart(2, '0');
+  return `${d.getDate()}.${d.getMonth() + 1}., ${zwei(d.getHours())}:${zwei(d.getMinutes())}`;
+};
+
+const warnbandPflegen = (zustand) => {
+  const band = $('#warnband');
+  const knopf = $('#warnband-tat');
+
+  if (zustand.letzterFehler && zustand.schmutzig) {
+    $('#warnband-text').textContent = 'Änderungen sind noch nicht bei GitHub angekommen.';
+    knopf.textContent = 'Jetzt hochladen';
+    knopf.dataset.tat = 'sichern';
+    band.classList.remove('versteckt');
+  } else if (zustand.letzterFehler) {
+    const wann = ohneVerbindungSeit ? ` — angezeigt wird der Stand vom ${zeitpunkt(ohneVerbindungSeit)}` : '';
+    $('#warnband-text').textContent = `Ohne Verbindung zu GitHub${wann}.`;
+    knopf.textContent = 'Erneut versuchen';
+    knopf.dataset.tat = 'holen';
+    band.classList.remove('versteckt');
+  } else {
+    ohneVerbindungSeit = null;
+    band.classList.add('versteckt');
+  }
+
+  // Der Takt laeuft nur im Ausnahmefall und schaltet sich selbst wieder ab.
+  const noetig = Boolean(zustand.letzterFehler) && sync.hatFernablage();
+  if (noetig && !wiederholung) wiederholung = setInterval(() => { nachtragen(); }, 60000);
+  if (!noetig && wiederholung) { clearInterval(wiederholung); wiederholung = null; }
+};
+
+/** Was ansteht, nachtragen: Eigenes geht hoch, sonst wird nur nachgesehen. */
+const nachtragen = async () => {
+  if (!sync.hatFernablage()) return;
+  if (sync.zustand.schmutzig) await sync.sichern().catch(() => {});
+  else await aktualisieren({ still: true }).catch(() => {});
+};
+
+$('#warnband-tat').addEventListener('click', fangen(async () => {
+  if ($('#warnband-tat').dataset.tat === 'sichern') {
+    const ergebnis = await sync.sichern();
+    if (ergebnis.konflikt) return konfliktZeigen();
+    if (!ergebnis.ok) throw new Error(ergebnis.fehler);
+    toast('Bei GitHub angekommen');
+  } else {
+    await aktualisieren();
+  }
+}));
+
+// Netz wieder da: sofort nachholen, nicht erst beim naechsten Takt.
+window.addEventListener('online', () => { nachtragen(); });
 
 /* ---- Konflikt --------------------------------------------------------------
 
@@ -309,6 +386,8 @@ $('#aktualisieren').addEventListener('click', fangen(() => aktualisieren()));
 // Abstand verhindert, dass blosses Fensterwechseln GitHub befragt.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
+  // Steht noch etwas offen, geht das vor: erst hochschieben, dann nachsehen.
+  if (sync.zustand.letzterFehler) return void nachtragen();
   if (Date.now() - letzterAbruf < 60000) return;
   aktualisieren({ still: true }).catch(() => {});
 });

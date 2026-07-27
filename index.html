@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>HDDatenbank</title>
-<link rel="stylesheet" href="./style.css">
+<!-- Das ?v= zwingt den Browser, nach einer Veroeffentlichung neu zu laden.
+     Bei jeder Fassung mitziehen, zusammen mit lib/fassung.js. -->
+<link rel="stylesheet" href="./style.css?v=2026-07-27">
 </head>
 <body>
 
@@ -42,6 +44,13 @@
     <button id="aktualisieren" class="knopf knopf-still" title="Neuesten Stand von GitHub holen">Aktualisieren</button>
     <button id="abmelden" class="knopf knopf-still">Abmelden</button>
   </header>
+
+  <!-- Zwei Lagen, die man nicht uebersehen darf: ohne Verbindung gestartet, oder
+       Aenderungen liegen noch nicht bei GitHub. Bleibt stehen, bis es stimmt. -->
+  <div id="warnband" class="warnband versteckt">
+    <span id="warnband-text" class="warnband-text"></span>
+    <button id="warnband-tat" class="knopf knopf-still"></button>
+  </div>
 
   <div class="schnell">
     <input id="schnell-feld" class="schnell-feld" type="text" placeholder="morgen 14 Uhr Zahnarzt !hoch #Privat  —  Enter für Vorschau">
@@ -295,6 +304,11 @@
           <input type="file" id="sich-datei" class="versteckt" accept="application/json">
         </div>
         <p id="sich-info" class="hinweis"></p>
+        <p class="hinweis" style="margin-bottom:0">
+          Ausgelieferte Fassung: <strong id="fassung">—</strong>. Steht hier nach einer
+          Veröffentlichung noch die alte Kennung, hält der Browser die alten Dateien fest —
+          Seite hart neu laden oder ein paar Minuten warten.
+        </p>
       </section>
 
       <section class="block">
@@ -377,6 +391,6 @@
 
 <div id="toast" class="toast versteckt"></div>
 
-<script type="module" src="./app.js"></script>
+<script type="module" src="./app.js?v=2026-07-27"></script>
 </body>
 </html>
