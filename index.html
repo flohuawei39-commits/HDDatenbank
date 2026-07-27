@@ -39,6 +39,7 @@
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </nav>
     <span id="abgleich" class="abgleich"></span>
+    <button id="aktualisieren" class="knopf knopf-still" title="Neuesten Stand von GitHub holen">Aktualisieren</button>
     <button id="abmelden" class="knopf knopf-still">Abmelden</button>
   </header>
 
@@ -52,10 +53,12 @@
 
     <section id="ansicht-start" class="ansicht">
       <div id="start-raster" class="start-raster">
+        <div class="start-leiste start-links" data-spalte="links"></div>
         <div class="start-voll" data-spalte="voll"></div>
         <div class="start-spalte" data-spalte="1"></div>
         <div class="start-spalte" data-spalte="2"></div>
         <div class="start-spalte" data-spalte="3"></div>
+        <div class="start-leiste start-rechts" data-spalte="rechts"></div>
       </div>
 
       <!-- Die Kacheln liegen hier und werden beim Laden in ihre Spalte einsortiert. -->
@@ -81,12 +84,14 @@
         </section>
 
         <section id="finanz-kachel" class="block" data-kachel="finanzen">
-          <h2 class="block-titel">Finanzen <span id="finanz-monat" class="block-neben"></span></h2>
-          <div class="kachel-zahlen">
-            <div class="kachel-wert"><span class="kachel-label">Einnahmen</span><span id="kachel-ein" class="kachel-zahl kachel-plus">—</span></div>
-            <div class="kachel-wert"><span class="kachel-label">Ausgaben</span><span id="kachel-aus" class="kachel-zahl kachel-minus">—</span></div>
-            <div class="kachel-wert"><span class="kachel-label">Saldo</span><span id="kachel-saldo" class="kachel-zahl">—</span></div>
-          </div>
+          <h2 class="block-titel">
+            Finanzen <span id="finanz-monat" class="block-neben"></span>
+            <span id="finanz-wahl" class="kachel-wahl">
+              <button type="button" data-finanz-ansicht="einzeln">Einzeln</button>
+              <button type="button" data-finanz-ansicht="gesamt">Gesamt</button>
+            </span>
+          </h2>
+          <div id="finanz-konten"></div>
           <p id="kachel-hinweis" class="hinweis"></p>
           <button class="knopf knopf-still" data-ansicht-sprung="finanzen" style="margin-top:8px">Mehr sehen</button>
         </section>
@@ -237,11 +242,30 @@
 
       <section class="block">
         <h2 class="block-titel">Kategorien <span class="block-neben">Kalender</span></h2>
+        <p class="hinweis" style="margin-top:0">
+          Löschen geht nur, solange kein Eintrag daran hängt. Anlegen kannst du auch direkt
+          im Eintragsdialog über „+ neue Kategorie …".
+        </p>
         <div id="kat-liste" class="kat-liste"></div>
         <div class="reihe">
           <input id="kat-name" class="feld" type="text" placeholder="Neue Kategorie">
           <input id="kat-farbe" class="feld feld-farbe" type="color" value="#34e2e2">
           <button id="kat-anlegen" class="knopf knopf-neon">Anlegen</button>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Arten <span class="block-neben">Kalender</span></h2>
+        <p class="hinweis" style="margin-top:0">
+          Was für eine Sache ein Eintrag ist: Termin, Frist oder Aufgabe. „Frist" ist fest,
+          weil die Fristenkachel, die Sortierung und die Tagesmail daran hängen. Alles andere
+          kannst du umbenennen, ergänzen und wieder entfernen, solange kein Eintrag daran hängt.
+        </p>
+        <div id="art-liste" class="kat-liste"></div>
+        <div class="reihe">
+          <input id="art-name" class="feld" type="text" placeholder="Neue Art">
+          <input id="art-farbe" class="feld feld-farbe" type="color" value="#a988ff">
+          <button id="art-anlegen" class="knopf knopf-neon">Anlegen</button>
         </div>
       </section>
 
@@ -294,6 +318,11 @@
           <input id="ab-token" class="feld" type="password" placeholder="Zugriffsschlüssel" style="flex:1;min-width:220px">
           <button id="ab-sichern" class="knopf knopf-neon">Verbinden</button>
           <button id="ab-loesen" class="knopf knopf-still versteckt">Lösen</button>
+        </div>
+        <div class="reihe" style="margin-top:8px">
+          <input id="ab-pin" class="feld" type="password" placeholder="Dein Passwort" autocomplete="current-password" style="flex:1;min-width:220px">
+          <span class="hinweis" style="flex:2;min-width:220px">Wird gebraucht, um vor dem ersten Schreiben nachzusehen,
+            ob im Repository schon ein Bestand liegt — und ob er zu diesem Passwort gehört.</span>
         </div>
         <label class="dialog-schalter" style="margin-top:8px">
           <input id="ab-merken" type="checkbox" checked> Schlüssel auf diesem Gerät merken

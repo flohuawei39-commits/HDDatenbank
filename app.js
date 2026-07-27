@@ -6,7 +6,7 @@
    praktisch unveraendert da.                                                */
 
 import { ruf, auszugLesen, dokumentLesen } from './lib/routen.js';
-import { alles as storeAlles } from './lib/store.js';
+import { alles as storeAlles, handyReihenfolge, MINDESTHOEHE } from './lib/store.js';
 import * as sync from './lib/sync.js';
 import * as github from './lib/github.js';
 import * as spiegel from './lib/spiegel.js';
@@ -16,6 +16,7 @@ const $$ = (sel) => [...document.querySelectorAll(sel)];
 
 const S = {
   kategorien: [],
+  arten: [],
   tasks: [],
   finKategorien: [],
   finBuchungen: [],
@@ -27,6 +28,7 @@ const S = {
   heute: null,
   ansicht: 'start',
   startseite: null,
+  finanzKachel: null,
   kachelNamen: [],
   vorlagen: [],
   offeneGemeinden: new Set(),
@@ -188,6 +190,8 @@ $('#abmelden').addEventListener('click', fangen(async () => {
 const abgleichAnzeigen = (zustand) => {
   const el = $('#abgleich');
   if (!el) return;
+  // Ohne Fernablage gibt es nichts zu holen.
+  $('#aktualisieren').classList.toggle('versteckt', !sync.hatFernablage());
   if (zustand.letzterFehler) {
     el.textContent = `⚠ ${zustand.letzterFehler}`;
     el.className = 'abgleich abgleich-fehler';
@@ -261,6 +265,54 @@ $('#abgleich').addEventListener('click', fangen(async () => {
   toast('Abgeglichen');
 }));
 
+/* ---- Aktualisieren ---------------------------------------------------------
+
+   Die Gegenrichtung zum Abgleich-Knopf: erst hoch, was hier offen liegt, dann
+   holen, was drueben neu ist. Ohne das bleibt der einzige Weg von Geraet zu
+   Geraet die Sicherungsdatei von Hand.                                        */
+
+let holenLaeuft = false;
+let letzterAbruf = 0;
+
+const aktualisieren = async ({ still = false } = {}) => {
+  if (holenLaeuft || !sync.hatFernablage()) return;
+  holenLaeuft = true;
+  const knopf = $('#aktualisieren');
+  const vorher = knopf.textContent;
+  if (!still) { knopf.textContent = '… holt'; knopf.disabled = true; }
+  try {
+    const ergebnis = await sync.holen();
+    letzterAbruf = Date.now();
+
+    if (ergebnis.konflikt) return konfliktZeigen();
+    if (!ergebnis.ok) {
+      if (still) return;                       // offline im Hintergrund ist keine Meldung wert
+      if (ergebnis.grund) return;
+      throw new Error(ergebnis.fehler);
+    }
+    if (ergebnis.neu) {
+      await neuZeichnen();
+      toast('Neuer Stand übernommen');
+    } else if (!still) {
+      toast('Stand ist aktuell');
+    }
+  } finally {
+    holenLaeuft = false;
+    knopf.textContent = vorher;
+    knopf.disabled = false;
+  }
+};
+
+$('#aktualisieren').addEventListener('click', fangen(() => aktualisieren()));
+
+// Kommt der Reiter zurueck in den Vordergrund, still nachsehen. Die Minute
+// Abstand verhindert, dass blosses Fensterwechseln GitHub befragt.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (Date.now() - letzterAbruf < 60000) return;
+  aktualisieren({ still: true }).catch(() => {});
+});
+
 // Ein Konflikt beim automatischen Sichern soll nicht still liegen bleiben.
 sync.beiKonflikt(() => konfliktZeigen());
 
@@ -278,7 +330,7 @@ const ansichtWechseln = async (name) => {
   if (name === 'tsz') await tszLaden();
   if (name === 'finanzen') await finanzenLaden();
   if (name === 'suche') { bereicheFuellen(); $('#such-feld').focus(); }
-  if (name === 'einstellungen') { await datenLaden(); katZeichnen(); await finkatLaden(); ablageZeichnen(); await einstellungenLaden(); }
+  if (name === 'einstellungen') { await datenLaden(); katZeichnen(); artZeichnen(); await finkatLaden(); ablageZeichnen(); await einstellungenLaden(); }
 };
 
 $$('.tab').forEach((tab) => tab.addEventListener('click', fangen(() => ansichtWechseln(tab.dataset.ansicht))));
@@ -286,6 +338,7 @@ $$('.tab').forEach((tab) => tab.addEventListener('click', fangen(() => ansichtWe
 const datenLaden = async () => {
   const daten = await api('/api/daten');
   S.kategorien = daten.kategorien;
+  S.arten = daten.arten || [];
   S.tasks = daten.tasks;
   S.heute = daten.heute;
 };
@@ -354,6 +407,9 @@ const zeile = (v, optionen = {}) => {
   const farbe = katFarbe(v.kategorie);
   const kat = kategorie(v.kategorie);
   const marken = [];
+  // Termin, Frist oder Aufgabe — auf einen Blick unterscheidbar.
+  const artDaten = S.arten.find((a) => a.id === v.art);
+  if (artDaten) marken.push(`<span class="zeile-marke zeile-marke-neon" style="--ton:${esc(artDaten.farbe)}">${esc(artDaten.name)}</span>`);
   if (optionen.marke) marken.push(`<span class="zeile-marke">${esc(optionen.marke)}</span>`);
   if (optionen.herkunft) marken.push(`<span class="zeile-marke">${esc(optionen.herkunft)}</span>`);
   if (kat) marken.push(`<span class="zeile-marke zeile-marke-neon" style="--ton:${esc(kat.farbe)}">${esc(kat.name)}</span>`);
@@ -386,7 +442,15 @@ const aufgabenZeile = (t) => {
   const faellig = t.faellig
     ? `<span class="zeile-marke${t.faellig <= S.heute && t.status !== 'erledigt' ? ' zeile-marke-neon' : ''}" ${t.faellig <= S.heute ? 'style="--ton:var(--neon-koralle)"' : ''}>${esc(formatKurz(t.faellig))}</span>`
     : '';
-  return `<div class="${klassen.join(' ')}" data-id="${esc(t.id)}" data-art="aufgabe">
+  /* Die Kachel „Offene Aufgaben" zeigt beide Quellen. Stammt die Zeile aus dem
+     Kalender, muss sie sich auch wie ein Kalendereintrag verhalten — Haken und
+     Antippen laufen dann über den Eintragsweg statt über den Aufgabenweg. */
+  const ausKalender = t.herkunft === 'eintrag';
+  const kennzeichen = ausKalender
+    ? `data-art="eintrag" data-datum="${esc(t.faellig || '')}"`
+    : 'data-art="aufgabe"';
+
+  return `<div class="${klassen.join(' ')}" data-id="${esc(t.id)}" ${kennzeichen}>
     <button class="zeile-haken" data-haken="1" title="erledigt">${t.status === 'erledigt' ? '✓' : ''}</button>
     <span class="zeile-text">${esc(t.titel)}</span>
     ${faellig}
@@ -399,23 +463,97 @@ const leer = (text) => `<p class="liste-leer">${esc(text)}</p>`;
 // ---------------------------------------------------------------- Startseite
 
 /**
- * Kacheln in ihre Spalte einsortieren. Die Abschnitte selbst bleiben dieselben
- * DOM-Knoten und behalten ihren Inhalt — verschoben wird nur, wo sie haengen.
- * Ausgeblendete wandern zurueck ins Lager, damit leere Spalten einklappen.
+ * Kacheln in ihre Ablage einsortieren und ihr Aussehen setzen. Die Abschnitte
+ * selbst bleiben dieselben DOM-Knoten und behalten ihren Inhalt — verschoben
+ * wird nur, wo sie haengen. Ausgeblendete wandern zurueck ins Lager, damit
+ * leere Spalten einklappen.
+ *
+ * `--handy` traegt die Handy-Reihenfolge. Es ist bewusst eine eigene Eigenschaft
+ * und nicht direkt `order`: die Vollzeile und die Spalten sind Flex-Behaelter,
+ * ein gesetztes `order` wuerde also auch am grossen Bildschirm umsortieren und
+ * die Paare auseinanderreissen. Zu `order` wird der Wert erst unter 900 Pixeln
+ * im CSS, wo das Raster ohnehin zu einem einspaltigen Fluss zusammenfaellt.
  */
 const kachelnEinsortieren = () => {
   const layout = S.startseite;
   if (!layout) return;
   const lager = $('#kachel-lager');
+  const raster = $('#start-raster');
+  const handy = handyReihenfolge(layout.kacheln);
 
   for (const platz of layout.kacheln) {
     const kachel = document.querySelector(`[data-kachel="${platz.id}"]`);
     if (!kachel) continue;
+
     const ziel = platz.sichtbar
-      ? document.querySelector(`#start-raster [data-spalte="${platz.spalte}"]`)
+      ? raster.querySelector(`[data-spalte="${platz.spalte}"]`)
       : lager;
     if (ziel) ziel.appendChild(kachel);
+
+    kachel.classList.toggle('kachel-halb', platz.breite === 'halb' && platz.spalte === 'voll');
+    kachel.style.minHeight = platz.hoehe ? `${platz.hoehe}px` : '';
+    kachel.style.setProperty('--handy', String(handy.indexOf(platz.id)));
+    griffSetzen(kachel, platz.id);
   }
+
+  // Eine leere Randleiste soll keine Spur im Raster hinterlassen.
+  for (const [seite, klasse] of [['links', 'ohne-links'], ['rechts', 'ohne-rechts']]) {
+    const belegt = layout.kacheln.some((k) => k.sichtbar && k.spalte === seite);
+    raster.classList.toggle(klasse, !belegt);
+  }
+};
+
+/* ---- Ziehgriff --------------------------------------------------------------
+
+   Die gespeicherte Hoehe ist ein Mindestmass. Das Ziehen setzt sie live, das
+   Loslassen legt sie ab, ein Doppelklick nimmt sie wieder zurueck. Zeiger-
+   ereignisse statt Maus, damit es auch am Stift und am Trackpad funktioniert —
+   dieselbe Mechanik wie im Layout-Editor.                                     */
+
+const griffSetzen = (kachel, id) => {
+  if (kachel.querySelector(':scope > .kachel-griff')) return;
+  const griff = document.createElement('div');
+  griff.className = 'kachel-griff';
+  griff.title = 'Höhe ziehen — Doppelklick setzt sie zurück';
+  kachel.appendChild(griff);
+
+  let start = 0;
+  let ausgang = 0;
+
+  griff.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    start = e.clientY;
+    ausgang = kachel.getBoundingClientRect().height;
+    griff.classList.add('zieht');
+    griff.setPointerCapture(e.pointerId);
+  });
+
+  griff.addEventListener('pointermove', (e) => {
+    if (!griff.classList.contains('zieht')) return;
+    const neu = Math.max(MINDESTHOEHE, Math.round(ausgang + (e.clientY - start)));
+    kachel.style.minHeight = `${neu}px`;
+  });
+
+  const beenden = fangen(async (e) => {
+    if (!griff.classList.contains('zieht')) return;
+    griff.classList.remove('zieht');
+    griff.releasePointerCapture(e.pointerId);
+    await hoeheAblegen(id, Math.round(parseFloat(kachel.style.minHeight) || 0));
+  });
+  griff.addEventListener('pointerup', beenden);
+  griff.addEventListener('pointercancel', beenden);
+
+  griff.addEventListener('dblclick', fangen(async () => {
+    kachel.style.minHeight = '';
+    await hoeheAblegen(id, null);
+  }));
+};
+
+const hoeheAblegen = async (id, hoehe) => {
+  const platz = (S.startseite?.kacheln || []).find((k) => k.id === id);
+  if (!platz) return;
+  platz.hoehe = hoehe;
+  await layoutSichern();
 };
 
 /** Kachel ein- oder ausblenden, ohne die Spaltenzuordnung anzufassen. */
@@ -462,9 +600,53 @@ const gemeindeLeiste = (g) => {
   </div>`;
 };
 
+/* ---- Finanzkachel -----------------------------------------------------------
+
+   Zwei Ansichten auf dieselben Zahlen: jedes Konto einzeln mit einer Summe
+   darunter, oder nur die Summe. Die Einzelsummen ergeben immer die Gesamtsumme
+   — Buchungen ohne erkannte Bank laufen unter „Sonstige" mit, statt still zu
+   fehlen.                                                                      */
+
+const finanzZahlen = (a) => `<div class="kachel-zahlen">
+  <div class="kachel-wert"><span class="kachel-label">Einnahmen</span><span class="kachel-zahl kachel-plus">${esc(euro(a.einnahmen))}</span></div>
+  <div class="kachel-wert"><span class="kachel-label">Ausgaben</span><span class="kachel-zahl kachel-minus">${esc(euro(a.ausgaben))}</span></div>
+  <div class="kachel-wert"><span class="kachel-label">Saldo</span><span class="kachel-zahl ${a.saldo < 0 ? 'kachel-minus' : 'kachel-plus'}">${esc(euro(a.saldo))}</span></div>
+</div>`;
+
+const finanzKachelZeichnen = () => {
+  const f = S.finanzKachel;
+  if (!f) return;
+  const ansicht = S.startseite?.finanzenAnsicht === 'gesamt' ? 'gesamt' : 'einzeln';
+  $$('#finanz-wahl [data-finanz-ansicht]').forEach((b) => b.classList.toggle('aktiv', b.dataset.finanzAnsicht === ansicht));
+
+  const konten = f.konten || [];
+  // Bei nur einem Konto ist die Aufteilung dieselbe Zahl zweimal.
+  const einzeln = ansicht === 'einzeln' && konten.length > 1;
+
+  $('#finanz-konten').innerHTML = einzeln
+    ? `${konten.map((k) => `<div class="finanz-konto">
+        <span class="finanz-konto-name">${esc(k.bank)}</span>
+        ${finanzZahlen(k)}
+      </div>`).join('')}
+      <div class="finanz-konto finanz-konto-summe">
+        <span class="finanz-konto-name">Zusammen</span>
+        ${finanzZahlen(f)}
+      </div>`
+    : finanzZahlen(f);
+};
+
+$('#finanz-wahl').addEventListener('click', fangen(async (e) => {
+  const knopf = e.target.closest('[data-finanz-ansicht]');
+  if (!knopf || !S.startseite) return;
+  S.startseite.finanzenAnsicht = knopf.dataset.finanzAnsicht;
+  finanzKachelZeichnen();
+  await layoutSichern();
+}));
+
 const startLaden = async () => {
   const d = await api('/api/start');
   S.kategorien = d.kategorien;
+  S.arten = d.arten || [];
   S.heute = d.heute;
   if (d.thema) themaSetzen(d.thema);
   if (d.startseite) { S.startseite = d.startseite; kachelnEinsortieren(); }
@@ -484,11 +666,9 @@ const startLaden = async () => {
   const f = d.finanzen || {};
   kachelZeigen('finanzen', Boolean(f.hatDaten));
   if (f.hatDaten) {
+    S.finanzKachel = f;
     $('#finanz-monat').textContent = f.monat;
-    $('#kachel-ein').textContent = euro(f.einnahmen);
-    $('#kachel-aus').textContent = euro(f.ausgaben);
-    $('#kachel-saldo').textContent = euro(f.saldo);
-    $('#kachel-saldo').className = `kachel-zahl ${f.saldo < 0 ? 'kachel-minus' : 'kachel-plus'}`;
+    finanzKachelZeichnen();
     $('#kachel-hinweis').textContent = f.ohneKategorie
       ? `${f.ohneKategorie} Buchungen ohne Kategorie — antippen führt zu den Finanzen.`
       : `${f.anzahl} Buchungen in diesem Monat.`;
@@ -506,9 +686,10 @@ const startLaden = async () => {
   $('#morgen-liste').innerHTML = d.morgenEintraege.length ? d.morgenEintraege.map((e) => zeile(e)).join('') : leer('Nichts eingetragen.');
   $('#offen-liste').innerHTML = d.offeneAufgaben.length ? d.offeneAufgaben.map(aufgabenZeile).join('') : leer('Keine offenen Aufgaben.');
 
-  const canBlock = $('#can-liste').closest('.block');
+  // Ueber kachelZeigen wie alle anderen: sonst kaeme die Kachel zurueck, obwohl
+  // sie im Editor ausgeblendet wurde.
+  kachelZeigen('can', Boolean(d.canKategorie));
   if (d.canKategorie) {
-    canBlock.classList.remove('versteckt');
     $('#can-titel').textContent = d.canKategorie.name;
     $('#can-liste').innerHTML = d.canListe.length
       ? d.canListe.map((c) => `<div class="zeile" style="--kat:${esc(d.canKategorie.farbe)}" data-id="${esc(c.id)}" data-datum="${esc(c.datum)}" data-art="eintrag">
@@ -517,8 +698,6 @@ const startLaden = async () => {
           <span class="zeile-marke">${esc(relativ(c.tageHer))}</span>
         </div>`).join('')
       : leer('Noch keine Einträge.');
-  } else {
-    canBlock.classList.add('versteckt');
   }
 };
 
@@ -725,6 +904,51 @@ $('#kat-anlegen').addEventListener('click', fangen(async () => {
   toast('Kategorie angelegt');
 }));
 
+// ---- Eintragsarten verwalten ----------------------------------------------
+
+const artZeichnen = () => {
+  $('#art-liste').innerHTML = S.arten.map((a) => `
+    <div class="kat-zeile" data-id="${esc(a.id)}">
+      <input class="feld feld-farbe" type="color" value="${esc(a.farbe || '#34e2e2')}" data-farbe>
+      <input class="feld" type="text" value="${esc(a.name)}" data-name>
+      <button class="knopf knopf-still" data-speichern>Sichern</button>
+      ${a.fest
+    ? '<button class="knopf knopf-still" disabled title="fest — die Fristenkachel hängt daran">fest</button>'
+    : '<button class="knopf knopf-gefahr" data-loeschen>Löschen</button>'}
+    </div>`).join('');
+};
+
+$('#art-liste').addEventListener('click', fangen(async (e) => {
+  const zeileEl = e.target.closest('.kat-zeile');
+  if (!zeileEl) return;
+  const id = zeileEl.dataset.id;
+  if (e.target.hasAttribute('data-speichern')) {
+    await post('/api/art', {
+      id, name: zeileEl.querySelector('[data-name]').value, farbe: zeileEl.querySelector('[data-farbe]').value
+    });
+    await datenLaden();
+    artZeichnen();
+    toast('Art gesichert');
+  }
+  if (e.target.hasAttribute('data-loeschen')) {
+    // Die Route sperrt das Loeschen, solange Eintraege daran haengen (409).
+    await del(`/api/art?id=${encodeURIComponent(id)}`);
+    await datenLaden();
+    artZeichnen();
+    toast('Art gelöscht');
+  }
+}));
+
+$('#art-anlegen').addEventListener('click', fangen(async () => {
+  const name = $('#art-name').value.trim();
+  if (!name) throw new Error('Name fehlt.');
+  await post('/api/art', { name, farbe: $('#art-farbe').value });
+  $('#art-name').value = '';
+  await datenLaden();
+  artZeichnen();
+  toast('Art angelegt');
+}));
+
 // ---- Finanzkategorien verwalten -------------------------------------------
 
 const finkatZeichnen = () => {
@@ -845,6 +1069,7 @@ const ablageZeichnen = () => {
   $('#ab-besitzer').value = a ? a.besitzer : '';
   $('#ab-repo').value = a ? a.repo : '';
   $('#ab-token').value = '';
+  $('#ab-pin').value = '';
   $('#ab-token').placeholder = a ? 'hinterlegt — leer lassen, um ihn zu behalten' : 'Zugriffsschlüssel';
   $('#ab-info').textContent = a
     ? `Abgleich mit ${a.besitzer}/${a.repo}.`
@@ -852,20 +1077,102 @@ const ablageZeichnen = () => {
   $('#ab-loesen').classList.toggle('versteckt', !a);
 };
 
+/**
+ * Im Repository liegt schon ein lesbarer Bestand. Beide Staende gegenueber-
+ * stellen und entscheiden lassen. Rueckgabe: 'meiner', 'fern' oder null
+ * (abgebrochen — dann wurde weder geschrieben noch etwas eingerichtet).
+ */
+const verbindenEntscheiden = (dort) => new Promise((aufloesen) => {
+  const felder = [['Einträge', 'eintraege'], ['Aufgaben', 'aufgaben'], ['Gemeinden', 'gemeinden'], ['Buchungen', 'buchungen']];
+  const zeile = ([name, s]) => {
+    const anders = dort.meiner[s] !== dort.fern[s] ? ' class="konflikt-anders"' : '';
+    return `<tr><td>${esc(name)}</td><td${anders}>${dort.meiner[s]}</td><td${anders}>${dort.fern[s]}</td></tr>`;
+  };
+
+  dialogOeffnen('Im Repository liegen bereits Daten', `
+    <p class="hinweis" style="margin-top:0">
+      Das Passwort passt, der Bestand ist also deiner. Es wurde noch nichts geschrieben.
+      Wähle, welcher Stand künftig gilt — der andere geht dabei verloren.
+    </p>
+    <table class="konflikt-tabelle">
+      <thead><tr><th></th><th>dieses Gerät</th><th>bei GitHub</th></tr></thead>
+      <tbody>${felder.map(zeile).join('')}</tbody>
+    </table>
+    <div class="reihe" style="margin-top:12px">
+      <button class="knopf knopf-neon" id="verb-fern">Stand von GitHub übernehmen</button>
+      <button class="knopf knopf-still" id="verb-meiner">Dieses Gerät hochschieben</button>
+    </div>`, null, null);
+
+  let beantwortet = false;
+  const antworten = (wahl) => { if (beantwortet) return; beantwortet = true; dialogSchliessen(); aufloesen(wahl); };
+
+  $('#verb-fern').addEventListener('click', () => antworten('fern'));
+  $('#verb-meiner').addEventListener('click', () => {
+    if (!confirm('Der Stand bei GitHub geht dabei verloren. Fortfahren?')) return;
+    antworten('meiner');
+  });
+  // Wegklicken oder Escape heisst: nichts tun.
+  $('#dialog').addEventListener('click', (e) => { if (e.target.id === 'dialog') antworten(null); }, { once: true });
+  $('#dialog-zu').addEventListener('click', () => antworten(null), { once: true });
+});
+
 $('#ab-sichern').addEventListener('click', fangen(async () => {
   const alt = ablageHolen();
   const besitzer = $('#ab-besitzer').value.trim();
   const repo = $('#ab-repo').value.trim();
   const token = $('#ab-token').value.trim() || (alt ? alt.token : '');
+  const aktuellesPasswort = $('#ab-pin').value;
   if (!besitzer || !repo || !token) throw new Error('Kontoname, Repository und Zugriffsschlüssel werden alle drei gebraucht.');
+  if (!aktuellesPasswort) throw new Error('Ohne dein Passwort lässt sich nicht prüfen, was im Repository liegt.');
 
   const geprueft = await github.pruefen({ token, besitzer, repo });
   if (geprueft.warnung && !confirm(`${geprueft.warnung}\n\nTrotzdem einrichten?`)) return;
 
+  const ablage = { besitzer, repo, token, zweig: geprueft.zweig };
+
+  /* Erst nachsehen, dann schreiben. Liegt drueben schon ein Bestand, wuerde ein
+     blindes Hochschieben ihn ueberschreiben — und genau das faellt erst auf,
+     wenn die Daten weg sind. Es wird hier nur gelesen. */
+  $('#ab-info').textContent = 'Verbindung steht. Sehe nach, was im Repository liegt …';
+  const dort = await sync.fernErkunden({ ablage, passwort: aktuellesPasswort });
+
+  if (!dort.leer && !dort.lesbar) {
+    $('#ab-info').textContent = '';
+    throw new Error('Im Repository liegen bereits Daten, die zu diesem Passwort nicht passen. '
+      + 'Es wurde nichts verändert. Melde dich mit dem Passwort an, das zu diesen Daten gehört, '
+      + 'oder wähle ein leeres Repository.');
+  }
+
+  if (!dort.leer && dort.lesbar) {
+    const entschieden = await verbindenEntscheiden(dort);
+    if (!entschieden) { $('#ab-info').textContent = ''; return; }
+
+    ablageSetzen(ablage, $('#ab-merken').checked);
+    sync.zustand.ablage = ablage;
+
+    if (entschieden === 'fern') {
+      await sync.fernUebernehmen({ ...dort, kopfSha: dort.kopfSha });
+      ablageZeichnen();
+      toast('Stand von GitHub übernommen');
+      await neuZeichnen();
+      return;
+    }
+    // 'meiner': auf dem fremden Kopf aufsetzen, damit der Ref-Wechsel durchgeht.
+    const durchgesetzt = await sync.meinenBehalten(dort.kopfSha);
+    if (!durchgesetzt.ok) {
+      ablageSetzen(alt, true);
+      sync.zustand.ablage = alt;
+      throw new Error(durchgesetzt.fehler);
+    }
+    ablageZeichnen();
+    toast('Abgleich eingerichtet, Stand dieses Geräts gilt');
+    return;
+  }
+
   // Ab jetzt verlassen die Daten das Geraet — das Startpasswort reicht nicht mehr.
   $('#ab-info').textContent = 'Verbindung steht. Prüfe das Passwort …';
-  ablageSetzen({ besitzer, repo, token, zweig: geprueft.zweig }, $('#ab-merken').checked);
-  sync.zustand.ablage = { besitzer, repo, token, zweig: geprueft.zweig };
+  ablageSetzen(ablage, $('#ab-merken').checked);
+  sync.zustand.ablage = ablage;
 
   const ergebnis = await sync.sichern('Abgleich eingerichtet');
   if (!ergebnis.ok) {
@@ -935,11 +1242,97 @@ const wahlWert = (name) => {
 
 const PRIO_TOENE = { gering: 'var(--neon-cyan)', mittel: 'var(--neon-amber)', hoch: 'var(--neon-koralle)' };
 
+/* ---- Listen, die sich selbst verwalten -------------------------------------
+
+   Kategorie und Art bekommen im Auswahlfeld ein "+ neu …" — dasselbe Muster,
+   das bei den Finanzkategorien schon laeuft. Statt `window.prompt` klappt eine
+   Zeile unter dem Feld auf: `prompt` sieht am Telefon schlecht aus und
+   erscheint in eingebetteten Browsern manchmal gar nicht.
+
+   Entfernt wird nicht hier, sondern in den Einstellungen. Eine Loeschfunktion
+   direkt neben der taeglichen Auswahl ist eine Falle, besonders am Handy.     */
+
+const neuZeileFragen = (frage, feld) => new Promise((auf) => {
+  const zeile = document.createElement('div');
+  zeile.className = 'neu-zeile';
+  zeile.innerHTML = `<input class="feld" type="text" placeholder="${esc(frage)}">
+    <button type="button" class="knopf knopf-neon" data-neu-ok>Anlegen</button>
+    <button type="button" class="knopf knopf-still" data-neu-ab>Abbrechen</button>`;
+  feld.insertAdjacentElement('afterend', zeile);
+
+  const eingabe = zeile.querySelector('input');
+  const fertig = (wert) => { zeile.remove(); auf(wert); };
+  zeile.querySelector('[data-neu-ok]').addEventListener('click', () => fertig(eingabe.value.trim() || null));
+  zeile.querySelector('[data-neu-ab]').addEventListener('click', () => fertig(null));
+  eingabe.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); fertig(eingabe.value.trim() || null); }
+    // Escape darf nur diese Zeile schliessen, nicht den ganzen Dialog.
+    if (ev.key === 'Escape') { ev.stopPropagation(); fertig(null); }
+  });
+  eingabe.focus();
+});
+
+const NEON_REIHE_KAL = ['#34e2e2', '#3ddc84', '#ff5fd2', '#ffb454', '#a988ff', '#ff7a6b'];
+
+const NEU_QUELLEN = {
+  kat: {
+    frage: 'Name der neuen Kategorie',
+    liste: () => S.kategorien,
+    pfad: '/api/kategorie',
+    feld: 'kategorie',
+    leer: 'ohne',
+    text: '+ neue Kategorie …'
+  },
+  art: {
+    frage: 'Name der neuen Art',
+    liste: () => S.arten,
+    pfad: '/api/art',
+    feld: 'art',
+    leer: null,
+    text: '+ neue Art …'
+  }
+};
+
+const neuOptionen = (quelle, gewaehlt) => {
+  const q = NEU_QUELLEN[quelle];
+  return `${q.leer ? `<option value="">${esc(q.leer)}</option>` : ''}
+    ${q.liste().map((k) => `<option value="${esc(k.id)}" ${k.id === gewaehlt ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}
+    <option value="${NEU_WERT}">${esc(q.text)}</option>`;
+};
+
+const neuFeldBehandeln = async (feld) => {
+  const quelle = feld.dataset.neufeld;
+  const q = NEU_QUELLEN[quelle];
+  if (!q) return;
+  if (feld.value !== NEU_WERT) { feld.dataset.vorher = feld.value; return; }
+
+  const zurueck = feld.dataset.vorher || '';
+  const name = await neuZeileFragen(q.frage, feld);
+  if (!name) { feld.value = zurueck; return; }
+
+  const farbe = NEON_REIHE_KAL[q.liste().length % NEON_REIHE_KAL.length];
+  const antwort = await post(q.pfad, { name, farbe });
+  const neu = antwort[q.feld];
+  if (neu) q.liste().push(neu);
+
+  feld.innerHTML = neuOptionen(quelle, neu ? neu.id : zurueck);
+  feld.value = neu ? neu.id : zurueck;
+  feld.dataset.vorher = feld.value;
+  toast(quelle === 'art' ? 'Art angelegt' : 'Kategorie angelegt');
+};
+
+document.addEventListener('change', fangen(async (e) => {
+  const feld = e.target.closest('[data-neufeld]');
+  if (feld) await neuFeldBehandeln(feld);
+}));
+
 const eintragDialog = (vorgabe) => {
   const e = {
     id: null, datum: S.heute || heuteISO(), datumBis: null, uhrzeit: null, text: '',
-    kategorie: null, prioritaet: 'mittel', istFrist: false, wiederholung: null, ...vorgabe
+    kategorie: null, art: null, prioritaet: 'mittel', istFrist: false, wiederholung: null, ...vorgabe
   };
+  // Ohne Angabe: mit Uhrzeit ist es ein Termin, ohne eine Aufgabe.
+  const art = e.art || (e.istFrist ? 'art_frist' : (e.uhrzeit ? 'art_termin' : 'art_aufgabe'));
 
   const inhalt = `
     <div class="dialog-feld">
@@ -952,12 +1345,12 @@ const eintragDialog = (vorgabe) => {
     </div>
     <div class="dialog-paar">
       <div class="dialog-feld"><label>Uhrzeit (optional)</label><input class="feld" id="d-zeit" type="time" value="${esc(e.uhrzeit || '')}"></div>
-      <div class="dialog-feld"><label>Kategorie</label>
-        <select class="feld" id="d-kat">
-          <option value="">ohne</option>
-          ${S.kategorien.map((k) => `<option value="${esc(k.id)}" ${k.id === e.kategorie ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}
-        </select>
+      <div class="dialog-feld"><label>Art</label>
+        <select class="feld" id="d-art" data-neufeld="art" data-vorher="${esc(art)}">${neuOptionen('art', art)}</select>
       </div>
+    </div>
+    <div class="dialog-feld"><label>Kategorie</label>
+      <select class="feld" id="d-kat" data-neufeld="kat" data-vorher="${esc(e.kategorie || '')}">${neuOptionen('kat', e.kategorie)}</select>
     </div>
     <div class="dialog-feld"><label>Priorität</label>
       ${wahlFeld('prio', [['gering', 'gering'], ['mittel', 'mittel'], ['hoch', 'hoch']], e.prioritaet, PRIO_TOENE)}
@@ -969,7 +1362,8 @@ const eintragDialog = (vorgabe) => {
       <div class="dialog-feld"><label>jede(n) … (Intervall)</label><input class="feld" id="d-intervall" type="number" min="1" max="52" value="${e.wiederholung ? e.wiederholung.intervall : 1}"></div>
       <div class="dialog-feld"><label>Serie endet am (optional)</label><input class="feld" id="d-wdhbis" type="date" value="${esc(e.wiederholung && e.wiederholung.bis ? e.wiederholung.bis : '')}"></div>
     </div>
-    <label class="dialog-schalter"><input type="checkbox" id="d-frist" ${e.istFrist ? 'checked' : ''}> Als Frist behandeln (erscheint 14 Tage vorher auf der Startseite)</label>`;
+    <p class="hinweis" style="margin:0">Ein Eintrag der Art „Frist" erscheint 14 Tage vorher auf der Startseite,
+      einer der Art „Aufgabe" unter den offenen Aufgaben.</p>`;
 
   dialogOeffnen(e.id ? 'Eintrag bearbeiten' : 'Neuer Eintrag', inhalt, async () => {
     const typ = wahlWert('wdh');
@@ -979,9 +1373,9 @@ const eintragDialog = (vorgabe) => {
       datum: $('#d-datum').value,
       datumBis: $('#d-bis').value || null,
       uhrzeit: $('#d-zeit').value || null,
-      kategorie: $('#d-kat').value || null,
+      kategorie: $('#d-kat').value && $('#d-kat').value !== NEU_WERT ? $('#d-kat').value : null,
+      art: $('#d-art').value && $('#d-art').value !== NEU_WERT ? $('#d-art').value : null,
       prioritaet: wahlWert('prio'),
-      istFrist: $('#d-frist').checked,
       wiederholung: typ ? { typ, intervall: Number($('#d-intervall').value) || 1, bis: $('#d-wdhbis').value || null } : null
     });
     dialogSchliessen();
@@ -1795,8 +2189,15 @@ const themaSetzen = (thema) => {
    funktioniert mit Maus und Finger gleichermassen und braucht nichts von aussen.
 */
 
-const SPALTEN_TITEL = { voll: 'Volle Breite', 1: 'Spalte 1', 2: 'Spalte 2', 3: 'Spalte 3' };
-const SPALTEN_FOLGE = ['voll', 1, 2, 3];
+const SPALTEN_TITEL = {
+  links: 'Linke Randleiste', voll: 'Volle Breite',
+  1: 'Spalte 1', 2: 'Spalte 2', 3: 'Spalte 3',
+  rechts: 'Rechte Randleiste'
+};
+const SPALTEN_FOLGE = ['links', 'voll', 1, 2, 3, 'rechts'];
+
+/** Aus dem Datenwert der Ablage die Form machen, in der sie gespeichert wird. */
+const alsSpalte = (wert) => (['links', 'voll', 'rechts'].includes(String(wert)) ? String(wert) : Number(wert));
 
 const kachelName = (id) => (S.kachelNamen.find((k) => k.id === id) || {}).name || id;
 
@@ -1810,12 +2211,18 @@ const editorZeichnen = () => {
     return `<div class="${klasse}" data-ed-spalte="${schluessel}">
       <span class="ed-spalte-kopf">${esc(SPALTEN_TITEL[schluessel])}</span>
       ${drin.map((k, i) => {
-    const platz = SPALTEN_FOLGE.indexOf(k.spalte === 'voll' ? 'voll' : Number(k.spalte));
+    const platz = SPALTEN_FOLGE.indexOf(alsSpalte(k.spalte));
+    // Halbe Breite gibt es nur in der Vollzeile — anderswo waere der Knopf eine Lüge.
+    const breite = schluessel === 'voll'
+      ? `<button class="ed-knopf${k.breite === 'halb' ? ' aktiv' : ''}" data-ed-tat="breite"
+           title="${k.breite === 'halb' ? 'auf volle Breite' : 'auf halbe Breite — zwei nebeneinander'}">${k.breite === 'halb' ? '◨' : '▬'}</button>`
+      : '';
     return `<div class="ed-kachel${k.sichtbar ? '' : ' ed-kachel-aus'}" data-ed-kachel="${esc(k.id)}">
         <span class="ed-griff" data-ed-griff title="ziehen">≡</span>
-        <span class="ed-name">${esc(kachelName(k.id))}</span>
-        <button class="ed-knopf" data-ed-tat="links" title="Spalte nach links" ${platz <= 0 ? 'disabled' : ''}>‹</button>
-        <button class="ed-knopf" data-ed-tat="rechts" title="Spalte nach rechts" ${platz >= SPALTEN_FOLGE.length - 1 ? 'disabled' : ''}>›</button>
+        <span class="ed-name">${esc(kachelName(k.id))}${k.hoehe ? ` <span class="ed-hoehe">${k.hoehe}px</span>` : ''}</span>
+        ${breite}
+        <button class="ed-knopf" data-ed-tat="links" title="eine Ablage nach links" ${platz <= 0 ? 'disabled' : ''}>‹</button>
+        <button class="ed-knopf" data-ed-tat="rechts" title="eine Ablage nach rechts" ${platz >= SPALTEN_FOLGE.length - 1 ? 'disabled' : ''}>›</button>
         <button class="ed-knopf" data-ed-tat="hoch" title="nach oben" ${i === 0 ? 'disabled' : ''}>⬆</button>
         <button class="ed-knopf" data-ed-tat="runter" title="nach unten" ${i === drin.length - 1 ? 'disabled' : ''}>⬇</button>
         <button class="ed-knopf" data-ed-tat="sicht" title="${k.sichtbar ? 'ausblenden' : 'einblenden'}">⊙</button>
@@ -1845,6 +2252,8 @@ const kachelSetzen = (id, spalte, vorId = null) => {
   const platz = liste.find((k) => k.id === id);
   if (!platz) return;
   platz.spalte = spalte;
+  // Halbe Breite ueberlebt den Weg aus der Vollzeile heraus nicht.
+  if (spalte !== 'voll') platz.breite = 'ganz';
 
   liste.splice(liste.indexOf(platz), 1);
   const ziel = vorId ? liste.findIndex((k) => k.id === vorId) : -1;
@@ -1861,9 +2270,10 @@ $('#ed-raster').addEventListener('click', fangen(async (e) => {
 
   const tat = knopf.dataset.edTat;
   if (tat === 'sicht') platz.sichtbar = !platz.sichtbar;
+  if (tat === 'breite') platz.breite = platz.breite === 'halb' ? 'ganz' : 'halb';
 
   if (tat === 'links' || tat === 'rechts') {
-    const jetzt = SPALTEN_FOLGE.indexOf(platz.spalte === 'voll' ? 'voll' : Number(platz.spalte));
+    const jetzt = SPALTEN_FOLGE.indexOf(alsSpalte(platz.spalte));
     const neu = SPALTEN_FOLGE[jetzt + (tat === 'rechts' ? 1 : -1)];
     if (neu !== undefined) kachelSetzen(id, neu, null);
   }
@@ -1939,7 +2349,7 @@ const zugBeenden = fangen(async () => {
   $$('[data-ed-kachel]').forEach((k) => k.classList.remove('ed-kachel-zieht'));
 
   if (!ziel) return editorZeichnen();
-  kachelSetzen(id, ziel.spalte === 'voll' ? 'voll' : Number(ziel.spalte), ziel.vor);
+  kachelSetzen(id, alsSpalte(ziel.spalte), ziel.vor);
   await layoutSichern();
 });
 

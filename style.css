@@ -128,12 +128,11 @@ select.feld { cursor: pointer; }
 
 .app { max-width: 1400px; margin: 0 auto; padding: 18px 16px 64px; }
 
-/* Nur die Startseite verzichtet aufs Seitenscrollen. Alle anderen Reiter
-   bleiben normal scrollbar — ein Kalender oder eine Buchungsliste gehoert
-   nicht in eine Hoehenbegrenzung. */
-body.start-aktiv { height: 100%; overflow: hidden; }
-body.start-aktiv .app { height: 100dvh; display: flex; flex-direction: column; padding-bottom: 16px; }
-body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* Die Startseite hat frueher aufs Seitenscrollen verzichtet und dafuer in den
+   Kacheln gescrollt. Das war der falsche Tausch: eine Uebersicht, in der man
+   scrollen muss, um die letzten Eintraege zu sehen, ist keine. Jetzt zeigt jede
+   Kachel alles, und wenn die Seite dafuer laenger wird, scrollt eben die Seite. */
+body.start-aktiv .app { padding-bottom: 16px; }
 
 .kopf { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
 .kopf-marke { font-size: 16px; font-weight: 600; letter-spacing: .06em; color: var(--neon-cyan); }
@@ -195,26 +194,73 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
 .block-titel { margin: 0 0 10px; font-size: 14px; font-weight: 600; letter-spacing: .03em; }
 .block-neben { color: var(--text-still); font-weight: 400; font-size: 13px; margin-left: 6px; }
 
-/* Startseite: drei Spalten plus eine Zeile ueber die volle Breite. Die Seite
-   selbst scrollt nicht — volle Kacheln scrollen fuer sich. */
+/* Startseite: schmale Randleisten aussen ueber die volle Hoehe, dazwischen eine
+   Zeile ueber die drei mittleren Spalten und darunter diese drei Spalten.
+
+   Die Spaltenaufteilung steht viermal da, weil eine leere Randleiste sonst als
+   180 Pixel breite Luecke stehen bliebe. `display: none` allein hilft nicht: die
+   Rasterspur bleibt trotzdem. */
 .start-raster {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(180px, 230px) repeat(3, minmax(0, 1fr)) minmax(180px, 230px);
+  grid-template-areas:
+    "links voll voll voll rechts"
+    "links s1   s2   s3   rechts";
   gap: 12px;
   align-content: start;
-  min-height: 0;
-  flex: 1;
 }
-.start-voll { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.start-voll:empty { display: none; }
-.start-spalte { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+.start-raster.ohne-links {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(180px, 230px);
+  grid-template-areas: "voll voll voll rechts" "s1 s2 s3 rechts";
+}
+.start-raster.ohne-rechts {
+  grid-template-columns: minmax(180px, 230px) repeat(3, minmax(0, 1fr));
+  grid-template-areas: "links voll voll voll" "links s1 s2 s3";
+}
+.start-raster.ohne-links.ohne-rechts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas: "voll voll voll" "s1 s2 s3";
+}
+
+.start-links { grid-area: links; }
+.start-rechts { grid-area: rechts; }
+.start-voll { grid-area: voll; }
+.start-raster > [data-spalte="1"] { grid-area: s1; }
+.start-raster > [data-spalte="2"] { grid-area: s2; }
+.start-raster > [data-spalte="3"] { grid-area: s3; }
+
+.start-leiste, .start-spalte { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .start-spalte:empty { display: none; }
 
-#ansicht-start:not(.versteckt) { display: flex; flex-direction: column; min-height: 0; }
-.start-raster > * > .block { min-height: 0; display: flex; flex-direction: column; }
-.start-raster .block > .liste { overflow-y: auto; min-height: 0; }
-.start-raster .block > .liste::-webkit-scrollbar { width: 6px; }
-.start-raster .block > .liste::-webkit-scrollbar-thumb { background: var(--rand-hell); border-radius: 3px; }
+/* Die Vollzeile bricht um: zwei halbe Kacheln teilen sich eine Zeile, eine
+   ganze nimmt sie allein. */
+.start-voll { display: flex; flex-wrap: wrap; gap: 12px; align-content: start; min-width: 0; }
+.start-voll:empty { display: none; }
+.start-voll > .block { flex: 1 1 100%; min-width: 0; }
+.start-voll > .block.kachel-halb { flex: 1 1 calc(50% - 6px); min-width: 260px; }
+
+/* Kachelhoehe: die gespeicherte Hoehe ist ein Mindestmass, kein Deckel. Es gibt
+   deshalb bewusst kein `max-height` und kein `overflow` auf den Listen. */
+.start-raster > * > .block { display: flex; flex-direction: column; position: relative; }
+
+.kachel-griff {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 10px;
+  cursor: ns-resize;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity .12s;
+  touch-action: none;
+}
+.kachel-griff::before {
+  content: '';
+  width: 34px; height: 3px;
+  border-radius: 2px;
+  background: var(--rand-hell);
+}
+.block:hover > .kachel-griff, .kachel-griff.zieht { opacity: 1; }
+.kachel-griff.zieht::before { background: var(--neon-cyan); }
 
 .liste { display: flex; flex-direction: column; gap: 7px; }
 .liste-leer { color: var(--text-still); font-size: 13px; padding: 2px 0; }
@@ -325,7 +371,33 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
 .kat-zeile { display: flex; align-items: center; gap: 8px; }
 .kat-zeile .feld { flex: 1; }
 
+/* Klappt unter einem Auswahlfeld auf, wenn "+ neu …" gewaehlt wurde. */
+.neu-zeile { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.neu-zeile .feld { flex: 1 1 140px; }
+
 /* ---------------------------------------------------------- Finanzen */
+
+/* Umschalter im Kachelkopf: klein genug, um nicht mit dem Titel zu streiten. */
+.kachel-wahl { display: inline-flex; gap: 2px; float: right; }
+.kachel-wahl button {
+  background: none;
+  border: 1px solid var(--rand);
+  color: var(--text-still);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: .04em;
+  padding: 2px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.kachel-wahl button:hover { color: var(--text); border-color: var(--rand-hell); }
+.kachel-wahl button.aktiv { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+
+.finanz-konto { margin-bottom: 10px; }
+.finanz-konto:last-child { margin-bottom: 0; }
+.finanz-konto-name { display: block; font-size: 11.5px; color: var(--text-still); letter-spacing: .05em; margin-bottom: 3px; }
+.finanz-konto-summe { border-top: 1px solid var(--rand); padding-top: 8px; }
+.finanz-konto-summe .finanz-konto-name { color: var(--text-schwach); }
 
 .kachel-zahlen { display: flex; gap: 22px; flex-wrap: wrap; }
 .kachel-wert { display: flex; flex-direction: column; gap: 2px; }
@@ -616,9 +688,14 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
 
 /* ---------------------------------------------------------- Kachel-Editor */
 
+/* Der Editor ist ein verkleinertes Abbild der Startseite und benutzt deshalb
+   dieselbe Aufteilung: Randleisten aussen, Vollzeile ueber den drei Spalten. */
 .ed-raster {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, .8fr) repeat(3, minmax(0, 1fr)) minmax(0, .8fr);
+  grid-template-areas:
+    "ed-links ed-voll ed-voll ed-voll ed-rechts"
+    "ed-links ed-s1   ed-s2   ed-s3   ed-rechts";
   gap: 8px;
   background: var(--bg-2);
   border: 1px solid var(--rand);
@@ -626,8 +703,14 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
   padding: 10px;
   touch-action: none;
 }
-.ed-voll { grid-column: 1 / -1; }
+.ed-raster > [data-ed-spalte="links"] { grid-area: ed-links; }
+.ed-raster > [data-ed-spalte="voll"] { grid-area: ed-voll; }
+.ed-raster > [data-ed-spalte="1"] { grid-area: ed-s1; }
+.ed-raster > [data-ed-spalte="2"] { grid-area: ed-s2; }
+.ed-raster > [data-ed-spalte="3"] { grid-area: ed-s3; }
+.ed-raster > [data-ed-spalte="rechts"] { grid-area: ed-rechts; }
 .ed-spalte { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 54px; }
+.ed-hoehe { color: var(--text-still); font-size: 11px; }
 .ed-spalte-kopf { font-size: 11px; color: var(--text-still); letter-spacing: .05em; }
 .ed-spalte-leer {
   border: 1px dashed var(--rand);
@@ -666,6 +749,7 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
 }
 .ed-knopf:hover:not(:disabled) { color: var(--text); border-color: var(--rand-hell); }
 .ed-knopf:disabled { opacity: .3; cursor: default; }
+.ed-knopf.aktiv { color: var(--neon-cyan); border-color: var(--neon-cyan); }
 .ed-zeichen { color: var(--text-schwach); }
 
 .ed-schwebe {
@@ -681,19 +765,32 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
 }
 
 @media (max-width: 900px) {
-  /* Sieben Kacheln passen am Handy nicht ohne Scrollen — also eine Spalte
-     und normales Seitenscrollen. */
-  body.start-aktiv { height: auto; overflow: visible; }
-  body.start-aktiv .app { height: auto; display: block; padding-bottom: 56px; }
-  body.start-aktiv .haupt { display: block; }
-  .start-raster { grid-template-columns: 1fr; flex: none; }
-  .start-raster .block > .liste { overflow-y: visible; }
-  .ed-raster { grid-template-columns: 1fr; }
-  .ed-voll { grid-column: auto; }
-  .spalten { grid-template-columns: 1fr; }
-}
+  /* Am Handy gibt es nur eine Spalte. Das Raster wird deshalb aufgeloest: alle
+     Behaelter und alle Kacheln laufen in einem einzigen Fluss, und die
+     Reihenfolge kommt aus `order`, das JavaScript pro Kachel setzt — nicht aus
+     der Reihenfolge der Behaelter im HTML. Genau daran lag es, dass die
+     Anordnung am Telefon vorher nichts mit der eingestellten zu tun hatte. */
+  body.start-aktiv .app { padding-bottom: 56px; }
+  .start-raster {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .start-raster > * {
+    display: contents;
+  }
+  .start-raster .block {
+    /* Erst hier wird aus der gemerkten Rangfolge eine Reihenfolge. */
+    order: var(--handy, 0);
+    /* Am Telefon entscheidet der Inhalt ueber die Hoehe, nicht der Ziehgriff. */
+    min-height: 0 !important;
+    margin-bottom: 12px;
+  }
+  .start-voll > .block.kachel-halb { min-width: 0; }
+  .kachel-griff { display: none; }
 
-@media (max-width: 900px) {
+  .ed-raster { display: flex; flex-direction: column; }
+  .spalten { grid-template-columns: 1fr; }
   .bal-zeile { grid-template-columns: 110px 1fr 84px 28px; }
 }
 
@@ -706,12 +803,54 @@ body.start-aktiv .haupt { display: flex; flex-direction: column; flex: 1; min-he
   .kopf { gap: 10px; }
   .kopf-nav { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
   .tab { white-space: nowrap; }
-  .kal-gitter { gap: 4px; }
-  .kal-tag { min-height: 62px; padding: 4px 5px; }
-  .kal-pille { font-size: 10.5px; padding: 1px 4px; }
-  .dialog-paar { grid-template-columns: 1fr; }
   .schnell { flex-wrap: wrap; }
   .schnell-feld { flex: 1 1 100%; }
+
+  /* Der Monat als Gitter braucht sieben Spalten. Auf 375 Pixeln sind das 50
+     Pixel pro Tag — zu wenig, um etwas zu lesen oder zu treffen. Deshalb wird
+     daraus eine Tagesliste: ein Tag je Zeile, volle Breite, und nur Tage mit
+     Inhalt bekommen Platz. */
+  .kal-wochentage { display: none; }
+  .kal-gitter { display: flex; flex-direction: column; gap: 6px; }
+  .kal-tag { min-height: 0; flex-direction: row; align-items: baseline; flex-wrap: wrap; padding: 10px 12px; }
+  .kal-tag-fremd { display: none; }
+  .kal-tag-nr { flex: 0 0 auto; min-width: 26px; font-size: 14px; }
+  .kal-tag-nr::after { content: '.'; }
+  .kal-tag .kal-pille { font-size: 12px; padding: 3px 8px; }
+  .kal-tag:not(:has(.kal-pille)) { opacity: .5; padding: 5px 12px; }
+
+  /* Der Dialog nimmt das ganze Fenster. Halbhohe Karten mit eigenem Scrollbalken
+     sind am Telefon nicht zu bedienen. */
+  .dialog { padding: 0; }
+  .dialog-karte {
+    width: 100%;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .dialog-inhalt { flex: 1; overflow-y: auto; }
+  /* Speichern und Abbrechen bleiben in Reichweite des Daumens. */
+  .dialog-fuss {
+    position: sticky;
+    bottom: 0;
+    background: var(--karte);
+    border-top: 1px solid var(--rand);
+    padding-top: 10px;
+    margin-top: auto;
+  }
+  .dialog-paar { grid-template-columns: 1fr; }
+
+  /* Unter 16 Pixeln zoomt iOS beim Hineintippen ins Feld und der Nutzer sitzt
+     danach in einer verschobenen Seite fest. */
+  .feld, .knopf, .tab { font-size: 16px; }
+  .knopf, .tab { min-height: 44px; }
+  .feld { min-height: 44px; }
+  .feld-farbe { min-width: 44px; }
+  .zeile-haken { min-width: 26px; min-height: 26px; }
 }
 
 /* ------------------------------------------------------------- Konflikt */
