@@ -1,0 +1,39 @@
+name: Nach Hostinger veröffentlichen
+
+# Push auf master ist die Veröffentlichung, genau wie vorher bei GitHub Pages.
+# Die FTP-Zugangsdaten liegen als GitHub-Secrets und werden nie im Code sichtbar.
+on:
+  push:
+    branches: [master]
+
+jobs:
+  hochladen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Quelle auschecken
+        uses: actions/checkout@v4
+
+      - name: Auf Hostinger hochladen
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_ZIELVERZEICHNIS }}
+          # Nur ausliefern, was auch auf GitHub Pages lag. Persoenliches, Tests
+          # und Entwicklungswerkzeug bleiben aussen vor.
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github/**
+            data/**
+            dokumente/**
+            backups/**
+            node_modules/**
+            *.log
+            *.tmp
+            hddatenbank-sicherung-*.json
+            hddatenbank-uebernahme-*.json
+            package.json
+            package-lock.json
+            README.md
