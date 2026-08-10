@@ -19,7 +19,11 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: ${{ secrets.FTP_ZIELVERZEICHNIS }}
+          # Das FTP-Konto startet bereits IN public_html — das ist die
+          # Domainwurzel. Noch einmal "public_html/" anzugeben legte die Seite
+          # eine Ebene zu tief ab, erreichbar unter footlet.shop/public_html.
+          # Kein Geheimnis, deshalb hier im Klartext statt in einem Secret.
+          server-dir: ./
           # Nur ausliefern, was auch auf GitHub Pages lag. Persoenliches, Tests
           # und Entwicklungswerkzeug bleiben aussen vor.
           exclude: |
