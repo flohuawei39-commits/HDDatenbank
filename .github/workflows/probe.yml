@@ -15,7 +15,13 @@ jobs:
           const koerper = { access_key: "00000000-0000-0000-0000-000000000000", subject: "Probe", from_name: "Probe", message: "Probe" };
           fetch("https://api.web3forms.com/submit", {
             method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+              Origin: "https://footlet.shop",
+              Referer: "https://footlet.shop/"
+            },
             body: JSON.stringify(koerper)
           }).then(async (a) => {
             console.log("Status:", a.status);
