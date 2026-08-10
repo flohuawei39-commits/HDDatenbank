@@ -33,6 +33,31 @@ const umgebung = (name, pflicht = true) => {
   return wert || null;
 };
 
+/* Das Passwort wird bewusst NICHT beschnitten, sondern in beiden Fassungen
+   probiert. Beim Einfuegen in die Secret-Maske haengt schnell ein Zeilenumbruch
+   dran; genauso gut kann ein Passwort aber echt auf ein Leerzeichen enden. Nur
+   eine der beiden Fassungen zu nehmen, hiesse den jeweils anderen Fall
+   stillschweigend als "falsches Passwort" auszugeben. */
+const passwortFassungen = () => {
+  const roh = process.env.HDD_PASSWORT || '';
+  return [...new Set([roh, roh.trim(), roh.replace(/[\r\n]+$/, '')])].filter(Boolean);
+};
+
+/** Mit einer Passwortfassung alles entschluesseln. `null`, wenn sie nicht passt. */
+const entschluesselnMit = async (passwort, meta, dateien) => {
+  const schluessel = await krypto.schluesselAbleiten(passwort, meta.salz, meta.runden || krypto.RUNDEN);
+  const klar = {};
+  try {
+    for (const datei of store.DATEIEN) {
+      const geheim = dateien[endung(datei)];
+      if (geheim) klar[datei] = await krypto.entschluesseln(schluessel, geheim);
+    }
+  } catch {
+    return null;
+  }
+  return { klar, schluessel };
+};
+
 const web3FormsSenden = async ({ schluessel, empfaenger, betreff, text }) => {
   const koerper = { access_key: schluessel, subject: betreff, from_name: 'HDDatenbank', message: text };
   if (empfaenger) koerper.email = empfaenger;
@@ -49,7 +74,7 @@ const web3FormsSenden = async ({ schluessel, empfaenger, betreff, text }) => {
 
 const lauf = async () => {
   const token = umgebung('HDD_DATEN_TOKEN');
-  const passwort = umgebung('HDD_PASSWORT');
+  umgebung('HDD_PASSWORT');
   const [besitzer, repo] = umgebung('HDD_DATEN_REPO').split('/');
   const zweig = umgebung('HDD_DATEN_ZWEIG', false) || 'main';
   if (!besitzer || !repo) {
@@ -65,13 +90,22 @@ const lauf = async () => {
   }
 
   const meta = JSON.parse(fern.dateien[META]);
-  const schluessel = await krypto.schluesselAbleiten(passwort, meta.salz, meta.runden || krypto.RUNDEN);
 
-  const klar = {};
-  for (const datei of store.DATEIEN) {
-    const geheim = fern.dateien[endung(datei)];
-    if (geheim) klar[datei] = await krypto.entschluesseln(schluessel, geheim);
+  let geoeffnet = null;
+  for (const fassung of passwortFassungen()) {
+    geoeffnet = await entschluesselnMit(fassung, meta, fern.dateien);
+    if (geoeffnet) break;
   }
+  if (!geoeffnet) {
+    console.error('Der Bestand lässt sich mit HDD_PASSWORT nicht entschlüsseln.');
+    console.error('Erwartet wird das Anmeldepasswort der HDDatenbank — nicht der');
+    console.error('Verzeichnisschutz von Hostinger und nicht der Zugriffsschlüssel.');
+    // Keine Angaben zum Wert, auch keine Laenge: dieses Repo ist oeffentlich,
+    // und damit sind es die Protokolle hier auch.
+    process.exit(1);
+  }
+
+  const { klar, schluessel } = geoeffnet;
   store.laden(klar);
 
   const config = store.read('config.json');
