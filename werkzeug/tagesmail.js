@@ -128,8 +128,12 @@ const lauf = async () => {
   const m = config.mail || {};
   const heute = store.heute();
 
+  // Von Hand ausgeloest kann der Tagesstand uebergangen werden — zum Nachsehen,
+  // ob der Weg wirklich funktioniert, ohne bis zum naechsten Morgen zu warten.
+  const erzwungen = process.env.HDD_ERZWINGEN === 'true';
+
   if (!m.aktiv) return console.log('Tagesmail ist in den Einstellungen ausgeschaltet.');
-  if (m.letzterVersand === heute) return console.log(`Für ${heute} wurde bereits verschickt.`);
+  if (m.letzterVersand === heute && !erzwungen) return console.log(`Für ${heute} wurde bereits verschickt.`);
 
   /* Der Zeitplan bei GitHub laeuft in UTC und kennt keine Sommerzeit. Deshalb
      wird mehrmals am Tag nachgesehen und hier gegen die eingestellte Uhrzeit
@@ -137,14 +141,25 @@ const lauf = async () => {
      steht. Ist der Tag einmal vermerkt, laufen die restlichen Termine leer. */
   const jetzt = new Date();
   const uhr = `${String(jetzt.getHours()).padStart(2, '0')}:${String(jetzt.getMinutes()).padStart(2, '0')}`;
-  if (uhr < (m.uhrzeit || '07:00')) return console.log(`Noch zu früh (${uhr} vor ${m.uhrzeit || '07:00'}).`);
+  if (uhr < (m.uhrzeit || '07:00') && !erzwungen) {
+    return console.log(`Noch zu früh (${uhr} vor ${m.uhrzeit || '07:00'}).`);
+  }
 
   const nachricht = mail.bauen({ ...klar['entries.json'], tasks: klar['tasks.json']?.tasks || [], gemeinden: klar['gemeinden.json']?.gemeinden || [] }, heute);
-  if (nachricht.leer) {
+
+  if (nachricht.leer && !erzwungen) {
     console.log('Für heute steht nichts an.');
   } else {
-    await perSmtp({ empfaenger: m.empfaenger, betreff: nachricht.betreff, text: nachricht.text });
-    console.log(`Verschickt: ${nachricht.betreff}`);
+    /* Ein erzwungener Lauf an einem leeren Tag schickt trotzdem etwas — sonst
+       waere gerade die Probe stumm, fuer die er gedacht ist. */
+    await perSmtp({
+      empfaenger: m.empfaenger,
+      betreff: nachricht.leer ? `HDDatenbank Probe ${heute}` : nachricht.betreff,
+      text: nachricht.leer
+        ? 'Probelauf der Tagesmail. Für heute steht nichts an — im Alltag stünde hier die Tagesübersicht.'
+        : nachricht.text
+    });
+    console.log(`Verschickt an ${m.empfaenger || 'das Absenderpostfach'}.`);
   }
 
   /* Auch ein leerer Tag wird vermerkt, sonst prueft das Dashboard den ganzen Tag

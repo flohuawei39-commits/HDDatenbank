@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '0 5-19/2 * * *'
   workflow_dispatch:
+    inputs:
+      erzwingen:
+        description: 'Jetzt verschicken, auch wenn heute schon eine Mail raus ist'
+        type: boolean
+        default: false
 
 jobs:
   verschicken:
@@ -21,6 +26,7 @@ jobs:
       HDD_SMTP_PASSWORT: ${{ secrets.HDD_SMTP_PASSWORT }}
       HDD_SMTP_HOST: ${{ secrets.HDD_SMTP_HOST }}
       HDD_SMTP_PORT: ${{ secrets.HDD_SMTP_PORT }}
+      HDD_ERZWINGEN: ${{ inputs.erzwingen }}
     steps:
       - name: Quelle auschecken
         uses: actions/checkout@v4
