@@ -58,18 +58,34 @@ const entschluesselnMit = async (passwort, meta, dateien) => {
   return { klar, schluessel };
 };
 
-const web3FormsSenden = async ({ schluessel, empfaenger, betreff, text }) => {
-  const koerper = { access_key: schluessel, subject: betreff, from_name: 'HDDatenbank', message: text };
-  if (empfaenger) koerper.email = empfaenger;
-  const antwort = await fetch('https://api.web3forms.com/submit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(koerper)
+/* Verschickt wird ueber SMTP, nicht ueber Web3Forms.
+   Web3Forms haengt hinter Cloudflare und beantwortet Aufrufe aus einem
+   Rechenzentrum mit 403 — geprueft, auch mit Browser-Kennung. Aus der
+   geoeffneten Seite heraus funktioniert es weiterhin; von hier aus nicht.
+
+   Der Absender MUSS das Postfach sein, ueber das angemeldet wird. Ein fremder
+   Absender scheitert an SPF/DMARC. Der Empfaenger ist frei und steht in den
+   Einstellungen der Anwendung. */
+const perSmtp = async ({ empfaenger, betreff, text }) => {
+  const { default: nodemailer } = await import('nodemailer');
+  const benutzer = umgebung('HDD_SMTP_BENUTZER');
+  umgebung('HDD_SMTP_PASSWORT');
+  const host = umgebung('HDD_SMTP_HOST', false) || 'smtp.hostinger.com';
+  const port = Number(umgebung('HDD_SMTP_PORT', false) || 465);
+
+  const post = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user: benutzer, pass: process.env.HDD_SMTP_PASSWORT || '' }
   });
-  const ergebnis = await antwort.json().catch(() => ({}));
-  if (!antwort.ok || ergebnis.success === false) {
-    throw new Error(ergebnis.message || `Web3Forms antwortete mit ${antwort.status}`);
-  }
+
+  await post.sendMail({
+    from: `HDDatenbank <${benutzer}>`,
+    to: empfaenger || benutzer,
+    subject: betreff,
+    text
+  });
 };
 
 const lauf = async () => {
@@ -113,7 +129,6 @@ const lauf = async () => {
   const heute = store.heute();
 
   if (!m.aktiv) return console.log('Tagesmail ist in den Einstellungen ausgeschaltet.');
-  if (!m.schluessel) return console.log('Kein Web3Forms-Schlüssel hinterlegt.');
   if (m.letzterVersand === heute) return console.log(`Für ${heute} wurde bereits verschickt.`);
 
   /* Der Zeitplan bei GitHub laeuft in UTC und kennt keine Sommerzeit. Deshalb
@@ -128,7 +143,7 @@ const lauf = async () => {
   if (nachricht.leer) {
     console.log('Für heute steht nichts an.');
   } else {
-    await web3FormsSenden({ schluessel: m.schluessel, empfaenger: m.empfaenger, betreff: nachricht.betreff, text: nachricht.text });
+    await perSmtp({ empfaenger: m.empfaenger, betreff: nachricht.betreff, text: nachricht.text });
     console.log(`Verschickt: ${nachricht.betreff}`);
   }
 

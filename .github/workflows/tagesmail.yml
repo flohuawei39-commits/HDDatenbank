@@ -17,6 +17,10 @@ jobs:
       HDD_DATEN_TOKEN: ${{ secrets.HDD_DATEN_TOKEN }}
       HDD_PASSWORT: ${{ secrets.HDD_PASSWORT }}
       HDD_DATEN_REPO: ${{ secrets.HDD_DATEN_REPO }}
+      HDD_SMTP_BENUTZER: ${{ secrets.HDD_SMTP_BENUTZER }}
+      HDD_SMTP_PASSWORT: ${{ secrets.HDD_SMTP_PASSWORT }}
+      HDD_SMTP_HOST: ${{ secrets.HDD_SMTP_HOST }}
+      HDD_SMTP_PORT: ${{ secrets.HDD_SMTP_PORT }}
     steps:
       - name: Quelle auschecken
         uses: actions/checkout@v4
@@ -25,6 +29,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+
+      # Gebraucht wird nur nodemailer; der Rest haengt an den Entwicklerwerkzeugen.
+      - name: Abhängigkeiten installieren
+        run: npm ci
 
       - name: Tagesmail prüfen und gegebenenfalls verschicken
         run: node werkzeug/tagesmail.js

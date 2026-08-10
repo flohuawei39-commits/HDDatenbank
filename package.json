@@ -9,6 +9,7 @@
     "start": "python -m http.server 8790"
   },
   "devDependencies": {
+    "nodemailer": "^9.0.5",
     "pdfjs-dist": "^4.10.38"
   },
   "engines": {
