@@ -30,6 +30,7 @@ jobs:
             dokumente/**
             backups/**
             node_modules/**
+            werkzeug/**
             *.log
             *.tmp
             hddatenbank-sicherung-*.json

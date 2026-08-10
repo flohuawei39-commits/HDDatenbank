@@ -1,0 +1,30 @@
+name: Tagesmail verschicken
+
+# Frueher ging die Mail nur raus, solange das Dashboard offen war. Jetzt sieht
+# GitHub mehrmals taeglich selbst nach. Die Uhrzeit steht in den Einstellungen
+# der Anwendung; hier wird nur oft genug nachgesehen, damit sie getroffen wird.
+# Der Zeitplan laeuft in UTC und kennt keine Sommerzeit — TZ unten uebersetzt.
+on:
+  schedule:
+    - cron: '0 5-19/2 * * *'
+  workflow_dispatch:
+
+jobs:
+  verschicken:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Berlin
+      HDD_DATEN_TOKEN: ${{ secrets.HDD_DATEN_TOKEN }}
+      HDD_PASSWORT: ${{ secrets.HDD_PASSWORT }}
+      HDD_DATEN_REPO: ${{ secrets.HDD_DATEN_REPO }}
+    steps:
+      - name: Quelle auschecken
+        uses: actions/checkout@v4
+
+      - name: Node bereitstellen
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Tagesmail prüfen und gegebenenfalls verschicken
+        run: node werkzeug/tagesmail.js
