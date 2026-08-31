@@ -3051,7 +3051,12 @@ const ratZeigen = async (knopf) => {
     return;
   }
 
-  const d = await post('/api/reime/rat', { text: knopf.dataset.rat, ausser: [knopf.dataset.ratId] });
+  const zeile = knopf.closest('[data-gruppe]');
+  const d = await post('/api/reime/rat', {
+    text: knopf.dataset.rat,
+    ausser: [knopf.dataset.ratId],
+    gruppe: zeile ? zeile.dataset.gruppe : ''
+  });
   behaelter.innerHTML = d.vorschlaege.length
     ? `<p class="hinweis" style="margin:0 0 6px">Aus dem Bestand, ab ${d.mindest} aufeinanderfolgenden Silben:</p>
        ${d.vorschlaege.map((v) => `<div class="rat-zeile">

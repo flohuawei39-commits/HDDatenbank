@@ -872,9 +872,19 @@ body.start-aktiv .app { padding-bottom: 16px; }
 }
 .silbe:hover { box-shadow: 0 0 10px -4px var(--laut); }
 .silbe-leer { background: transparent; border-color: transparent; cursor: default; }
-/* Die Wortgrenze bekommt Luft statt eines Strichs — der Strich waere ein
-   Silbentrenner mehr, und davon gibt es hier schon genug. */
-.silbe-wortanfang { margin-left: 12px; }
+/* Die Wortgrenze darf keinen Platz kosten. Ein Vorschub haette die Spalten
+   verschoben, sobald ein Eintrag aus zwei Woertern besteht und der darueber
+   aus einem — genau das soll nicht passieren. Der Strich liegt deshalb in der
+   Luecke, die ohnehin zwischen zwei Zellen steht. */
+.silbe-wortanfang::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 3px;
+  bottom: 3px;
+  width: 1px;
+  background: var(--rand-hell);
+}
 .silbe-korrigiert { border-style: dashed; }
 .silbe-anmerkung::after {
   content: '';

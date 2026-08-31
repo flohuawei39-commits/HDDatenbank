@@ -23,8 +23,9 @@ Aufrufe bedient, die früher an einen Node-Server gingen.
 
 Der Reiter „Reime" hat drei Unterreiter. Gerechnet wird überall mit **Silbenkernen**: dem
 Vokal, Umlaut oder Doppellaut, der in einer Silbe steckt. „Hundesteuer" ergibt u, e, eu, e.
-Fest verabredet sind dabei äu → eu, ai und ay → ei, y → i, ie → i; Doppelvokale und
-Dehnungs-h fallen auf den Grundvokal zusammen. Das Regelwerk steht in `lib/silben.js` und
+Fest verabredet sind dabei äu → eu, ai und ay → ei, y → i; Doppelvokale und Dehnungs-h
+fallen auf den Grundvokal zusammen. „ie" ist ein eigener Laut und wird **nicht** zu i —
+wer beides gleich behandeln will, merkt an der Silbe zusätzlich i an. Das Regelwerk steht in `lib/silben.js` und
 kommt ohne Wörterbuch aus — was daneben liegt, korrigierst du an der Silbe selbst.
 
 - **Reime**: ein Kopfbegriff, darunter die Reime. Die Zeilen werden so verschoben, dass die
