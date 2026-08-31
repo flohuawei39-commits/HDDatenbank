@@ -10,6 +10,7 @@ import { alles as storeAlles, handyReihenfolge, MINDESTHOEHE } from './lib/store
 import * as sync from './lib/sync.js';
 import * as github from './lib/github.js';
 import * as spiegel from './lib/spiegel.js';
+import { FARBEN as ANFANGSFARBEN } from './lib/reime.js';
 import { FASSUNG } from './lib/fassung.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -41,7 +42,20 @@ const S = {
   kalMonat: 0,
   monat: null,
   gewaehlterTag: null,
-  vorschau: null
+  vorschau: null,
+  reiter: [],
+  feldTypen: [],
+  reimeBereich: 'reime',
+  reimeKategorie: null,
+  reimeDaten: null,
+  reimeEinst: null,
+  rkatBereich: 'reime',
+  silbenRegister: [],
+  eigenReiter: null,
+  eigenDaten: null,
+  eigenSuche: '',
+  eigenSort: null,
+  eigenRichtung: 'auf'
 };
 
 const PRIO_LABEL = { gering: 'gering', mittel: 'mittel', hoch: 'hoch' };
@@ -398,9 +412,18 @@ sync.beiKonflikt(() => konfliktZeigen());
 // ---------------------------------------------------------------- Navigation
 
 const ansichtWechseln = async (name) => {
+  // Ein eigener Reiter hat keine eigene Ansicht, sondern fuellt die eine
+  // Listenansicht; welcher gemeint ist, steht in S.eigenReiter.
+  const gewaehlt = S.reiter.find((r) => r.id === name);
+  const eigen = Boolean(gewaehlt && gewaehlt.typ === 'eigen');
+  const abschnitt = eigen ? 'eigen' : name;
+
   S.ansicht = name;
+  S.eigenReiter = eigen ? name : null;
+  if (eigen) { S.eigenSuche = ''; S.eigenSort = null; }
+
   $$('.tab').forEach((t) => t.classList.toggle('aktiv', t.dataset.ansicht === name));
-  $$('.ansicht').forEach((a) => a.classList.toggle('versteckt', a.id !== `ansicht-${name}`));
+  $$('.ansicht').forEach((a) => a.classList.toggle('versteckt', a.id !== `ansicht-${abschnitt}`));
   // Nur die Startseite laeuft ohne Seitenscrollen — siehe body.start-aktiv im CSS.
   document.body.classList.toggle('start-aktiv', name === 'start');
   if (name === 'start') await startLaden();
@@ -408,6 +431,8 @@ const ansichtWechseln = async (name) => {
   if (name === 'aufgaben') { await datenLaden(); aufgabenZeichnen(); }
   if (name === 'tsz') await tszLaden();
   if (name === 'finanzen') await finanzenLaden();
+  if (name === 'reime') await reimeLaden();
+  if (eigen) { $('#eigen-suche').value = ''; await eigenLaden(); }
   if (name === 'suche') { bereicheFuellen(); $('#such-feld').focus(); }
   if (name === 'einstellungen') { await datenLaden(); katZeichnen(); artZeichnen(); await finkatLaden(); ablageZeichnen(); await einstellungenLaden(); }
 };
@@ -553,6 +578,37 @@ const leer = (text) => `<p class="liste-leer">${esc(text)}</p>`;
  * die Paare auseinanderreissen. Zu `order` wird der Wert erst unter 900 Pixeln
  * im CSS, wo das Raster ohnehin zu einem einspaltigen Fluss zusammenfaellt.
  */
+/**
+ * Kacheln der eigenen Reiter erzeugen und fuellen. Sie stehen nicht im HTML,
+ * weil es sie erst gibt, wenn jemand einen Reiter anlegt — und wieder nicht
+ * mehr, wenn er ihn entfernt.
+ */
+const eigenKachelnBauen = (liste) => {
+  const lager = $('#kachel-lager');
+  const gueltig = new Set(liste.map((k) => k.id));
+
+  for (const alt of $$('[data-kachel^="eigen_"]')) {
+    if (!gueltig.has(alt.dataset.kachel)) alt.remove();
+  }
+
+  for (const k of liste) {
+    let kachel = document.querySelector(`[data-kachel="${k.id}"]`);
+    if (!kachel) {
+      kachel = document.createElement('section');
+      kachel.className = 'block';
+      kachel.dataset.kachel = k.id;
+      lager.appendChild(kachel);
+    }
+    kachel.innerHTML = `<h2 class="block-titel">${esc(k.name)}</h2>
+      <div class="liste liste-dezent">${k.zeilen.length
+    ? k.zeilen.map((z) => `<div class="zeile" data-eigen-sprung="${esc(k.reiterId)}">
+            <span class="zeile-text">${esc(z.titel)}</span>
+            ${z.neben ? `<span class="zeile-marke">${esc(z.neben)}</span>` : ''}
+          </div>`).join('')
+    : leer('Noch nichts eingetragen.')}</div>`;
+  }
+};
+
 const kachelnEinsortieren = () => {
   const layout = S.startseite;
   if (!layout) return;
@@ -728,6 +784,8 @@ const startLaden = async () => {
   S.arten = d.arten || [];
   S.heute = d.heute;
   if (d.thema) themaSetzen(d.thema);
+  kopfleisteZeichnen(d.reiter);
+  eigenKachelnBauen(d.eigenKacheln || []);
   if (d.startseite) { S.startseite = d.startseite; kachelnEinsortieren(); }
 
   $('#heute-datum').textContent = `${TAGE_LANG[wochentagIndex(d.heute)]}, ${formatDE(d.heute)}`;
@@ -1507,6 +1565,13 @@ const aufgabeDialog = (vorgabe) => {
 // ---------------------------------------------------------------- Klicks auf Zeilen
 
 document.addEventListener('click', fangen(async (e) => {
+  // Eine Zeile in der Kachel eines eigenen Reiters fuehrt in diesen Reiter.
+  const eigenSprung = e.target.closest('[data-eigen-sprung]');
+  if (eigenSprung) {
+    await ansichtWechseln(eigenSprung.dataset.eigenSprung);
+    return;
+  }
+
   const ansichtSprung = e.target.closest('[data-ansicht-sprung]');
   if (ansichtSprung) {
     await ansichtWechseln(ansichtSprung.dataset.ansichtSprung);
@@ -2441,7 +2506,13 @@ const einstellungenLaden = async () => {
   S.startseite = d.startseite;
   S.kachelNamen = d.kacheln || [];
   S.vorlagen = d.vorlagen || [];
+  S.feldTypen = d.feldTypen || [];
+  S.reimeEinst = d.reime || null;
+  kopfleisteZeichnen(d.reiter);
   editorZeichnen();
+  reiterZeichnen();
+  farbenZeichnen();
+  rkatZeichnen();
   [...$('#thema-wahl').querySelectorAll('[data-wert]')].forEach((b) => b.classList.toggle('aktiv', b.dataset.wert === d.thema));
   $('#thema-text').textContent = THEMA_TEXT[d.thema] || '';
 
@@ -2536,6 +2607,906 @@ const mailWecker = async () => {
   } catch { /* ein Mailproblem darf die Oberfläche nicht stören */ }
 };
 
+/* ================================================================ Kopfleiste
+
+   Die festen Ansichten bleiben statisches HTML — beweglich ist nur die Leiste
+   davor. Name, Reihenfolge und Sichtbarkeit kommen aus der Konfiguration,
+   eigene Reiter bekommen ihren Knopf zur Laufzeit dazu.                      */
+
+const kopfleisteZeichnen = (reiter) => {
+  if (!Array.isArray(reiter) || !reiter.length) return;
+  S.reiter = reiter;
+  const nav = $('.kopf-nav');
+
+  for (const r of reiter) {
+    let knopf = nav.querySelector(`[data-ansicht="${r.id}"]`);
+    if (!knopf) {
+      if (r.typ !== 'eigen') continue;
+      knopf = document.createElement('button');
+      knopf.className = 'tab';
+      knopf.dataset.ansicht = r.id;
+      knopf.addEventListener('click', fangen(() => ansichtWechseln(r.id)));
+    }
+    knopf.textContent = r.name;
+    knopf.classList.toggle('versteckt', !r.sichtbar);
+    // Anhaengen setzt den Knopf zugleich an seine Stelle in der Reihenfolge.
+    nav.appendChild(knopf);
+  }
+
+  // Was es nicht mehr gibt — ein geloeschter eigener Reiter —, fliegt raus.
+  for (const knopf of [...nav.querySelectorAll('.tab')]) {
+    if (!reiter.some((r) => r.id === knopf.dataset.ansicht)) knopf.remove();
+  }
+};
+
+/* ================================================================ Reime
+
+   Drei Unterreiter auf einer Ansicht. Der Kern ist das Silbenraster: jede Silbe
+   eine gleich breite Zelle, eingefaerbt nach ihrem relevanten Laut, und die
+   Zeilen so weit verschoben, dass die passenden Silben untereinander stehen.
+   Der Versatz kommt fertig gerechnet aus reimedaten.js.                      */
+
+const REIME_TITEL = { reime: 'Reime', zeilen: 'Zeilen', texte: 'Texte' };
+
+const laut = (l) => (S.reimeDaten && S.reimeDaten.farben[l]) || 'var(--rand-hell)';
+
+/** Silbenzellen einer Zeile. Der Versatz wird als leere Zellen vorgesetzt. */
+const silbenRaster = (silben, versatz = 0, treffer = null) => {
+  const zellen = [];
+  for (let i = 0; i < versatz; i += 1) zellen.push('<span class="silbe silbe-leer"></span>');
+
+  silben.forEach((s, i) => {
+    const platz = S.silbenRegister.push(s) - 1;
+    const klassen = ['silbe'];
+    if (s.wortAnfang && i > 0) klassen.push('silbe-wortanfang');
+    if (s.anmerkungen.length) klassen.push('silbe-anmerkung');
+    if (s.korrigiert) klassen.push('silbe-korrigiert');
+    if (treffer && treffer.includes(i)) klassen.push('silbe-treffer');
+    zellen.push(`<button type="button" class="${klassen.join(' ')}" style="--laut:${esc(laut(s.primaer))}"
+      data-silbe="${platz}" title="${esc(s.wort)} — ${s.silbeIndex + 1}. Silbe">${esc(s.primaer)}</button>`);
+  });
+
+  return `<div class="silben-raster">${zellen.join('')}</div>`;
+};
+
+const zaehlerMarke = (z) => `<span class="reim-zaehler" title="passende Silben nach oben und nach unten, dann Silben insgesamt">
+  ↑${z.zaehlung.oben} ↓${z.zaehlung.unten} · ${z.zaehlung.gesamt}</span>`;
+
+const reimZeile = (z, gruppe) => `
+  <div class="reim-zeile${z.kopf ? ' reim-zeile-kopf' : ''}" data-zeile="${esc(z.id)}" data-gruppe="${esc(gruppe.id)}">
+    <div class="reim-kopfzeile">
+      <span class="reim-text">${esc(z.text)}</span>
+      ${zaehlerMarke(z)}
+      <button class="reim-ausklapp" data-rat="${esc(z.text)}" data-rat-id="${esc(z.id)}"
+        title="passende Reime aus dem Bestand">✓</button>
+      ${z.kopf ? '' : `<button class="reim-weg" data-reim-weg="${esc(z.id)}" title="Reim entfernen">✕</button>`}
+    </div>
+    ${silbenRaster(z.silben, z.versatz)}
+    <div class="reim-rat versteckt"></div>
+  </div>`;
+
+const katMarken = (ids) => (ids || [])
+  .map((id) => (S.reimeDaten.kategorien || []).find((k) => k.id === id))
+  .filter(Boolean)
+  .map((k) => `<span class="zeile-marke zeile-marke-neon" style="--ton:${esc(k.farbe)}">${esc(k.name)}</span>`)
+  .join(' ');
+
+const reimeKategorienZeichnen = () => {
+  const knopf = (id, name, farbe) => `<button type="button" class="kat-knopf${(S.reimeKategorie || '') === id ? ' aktiv' : ''}"
+    data-rkat-wahl="${esc(id)}" style="--ton:${esc(farbe)}">${esc(name)}</button>`;
+  $('#reime-kategorien').innerHTML = knopf('', 'Alles', 'var(--rand-hell)')
+    + (S.reimeDaten.kategorien || []).map((k) => knopf(k.id, k.name, k.farbe)).join('');
+};
+
+const reimeZeichnen = () => {
+  const d = S.reimeDaten;
+  if (!d) return;
+  S.silbenRegister = [];
+
+  $$('#reime-bereiche [data-bereich]').forEach((b) => b.classList.toggle('aktiv', b.dataset.bereich === d.bereich));
+  reimeKategorienZeichnen();
+
+  // In Reimen ist die Faerbung fest an — dort ist sie der ganze Zweck.
+  const faerben = d.bereich === 'reime'
+    ? true
+    : (d.bereich === 'zeilen' ? d.anzeige.faerbenZeilen : d.anzeige.faerbenTexte);
+  $('#reime-faerben-schalter').classList.toggle('versteckt', d.bereich === 'reime');
+  $('#reime-faerben').checked = faerben;
+  $('#reime-such-auf').classList.toggle('versteckt', d.bereich !== 'reime');
+  if (d.bereich !== 'reime') $('#reime-suchblock').classList.add('versteckt');
+  $('#reime-neu').textContent = d.bereich === 'reime' ? 'Neue Gruppe' : (d.bereich === 'zeilen' ? 'Neue Zeile' : 'Neuer Text');
+
+  const ziel = $('#reime-liste');
+
+  if (d.bereich === 'reime') {
+    ziel.innerHTML = d.gruppen.length ? d.gruppen.map((g) => `
+      <section class="block reim-gruppe" data-gruppe="${esc(g.id)}">
+        <h2 class="block-titel">
+          ${esc(g.kopf)} ${katMarken(g.kategorien)}
+          <span class="kachel-wahl">
+            <button type="button" data-gruppe-reim>+ Reim</button>
+            <button type="button" data-gruppe-sortieren title="besten Reim nach oben">Sortieren</button>
+            <button type="button" data-gruppe-aendern>Ändern</button>
+          </span>
+        </h2>
+        <div class="silben-lauf">${g.zeilen.map((z) => reimZeile(z, g)).join('')}</div>
+      </section>`).join('')
+      : leer('Noch keine Reimgruppe. Über „Neue Gruppe" einen Begriff anlegen.');
+    return;
+  }
+
+  if (d.bereich === 'zeilen') {
+    ziel.innerHTML = d.zeilen.length ? `
+      <section class="block">
+        <div class="silben-lauf">${d.zeilen.map((z) => `
+          <div class="reim-zeile" data-zeile="${esc(z.id)}" data-typ="zeile">
+            <div class="reim-kopfzeile">
+              <span class="reim-text">${esc(z.text)}</span>
+              ${katMarken(z.kategorien)}
+              <button class="reim-weg" data-zeile-aendern="${esc(z.id)}" title="ändern">✎</button>
+            </div>
+            ${faerben ? silbenRaster(z.silben, z.versatz) : ''}
+          </div>`).join('')}
+        </div>
+      </section>`
+      : leer('Noch keine Zeilen. Über „Neue Zeile" anfangen.');
+    return;
+  }
+
+  ziel.innerHTML = d.texte.length ? d.texte.map((t) => `
+    <section class="block" data-text="${esc(t.id)}">
+      <h2 class="block-titel">
+        ${esc(t.titel)} ${katMarken(t.kategorien)}
+        <span class="kachel-wahl"><button type="button" data-text-aendern="${esc(t.id)}">Ändern</button></span>
+      </h2>
+      <div class="silben-lauf">${t.zeilen.map((z) => `
+        <div class="reim-zeile">
+          <div class="reim-kopfzeile"><span class="reim-text">${esc(z.text || ' ')}</span></div>
+          ${faerben && z.silben.length ? silbenRaster(z.silben, z.versatz) : ''}
+        </div>`).join('')}
+      </div>
+    </section>`).join('')
+    : leer('Noch keine Texte. Über „Neuer Text" anfangen.');
+};
+
+const reimeLaden = async () => {
+  const teile = [`bereich=${encodeURIComponent(S.reimeBereich)}`];
+  if (S.reimeKategorie) teile.push(`kategorie=${encodeURIComponent(S.reimeKategorie)}`);
+  S.reimeDaten = await api(`/api/reime?${teile.join('&')}`);
+  suchfelderBauen();
+  reimeZeichnen();
+};
+
+/* ---- Kategorienhinweis ------------------------------------------------------
+
+   Kein Ratespiel: der Hinweis haengt an den Stichwoertern, die an der Kategorie
+   selbst stehen. Entschieden wird von Hand, angeboten wird nur.              */
+
+const katHinweis = (text) => {
+  const wort = String(text || '').toLowerCase();
+  if (!wort) return [];
+  return (S.reimeDaten.kategorien || []).filter((k) => k.stichwoerter.some((s) => s && wort.includes(s)));
+};
+
+const katKaestchen = (gewaehlt = []) => `
+  <div class="kat-kaestchen">
+    ${(S.reimeDaten.kategorien || []).map((k) => `
+      <label class="dialog-schalter">
+        <input type="checkbox" data-kat="${esc(k.id)}" ${gewaehlt.includes(k.id) ? 'checked' : ''}>
+        <span class="zeile-marke zeile-marke-neon" style="--ton:${esc(k.farbe)}">${esc(k.name)}</span>
+      </label>`).join('') || '<span class="hinweis">Noch keine Kategorien — anzulegen in den Einstellungen.</span>'}
+  </div>
+  <p class="hinweis" data-kat-hinweis></p>`;
+
+const katGewaehlt = () => [...$('#dialog-inhalt').querySelectorAll('[data-kat]')]
+  .filter((f) => f.checked).map((f) => f.dataset.kat);
+
+const hinweisPflegen = (text) => {
+  const feld = $('#dialog-inhalt').querySelector('[data-kat-hinweis]');
+  if (!feld) return;
+  const treffer = katHinweis(text);
+  feld.textContent = treffer.length ? `Passt vielleicht zu: ${treffer.map((k) => k.name).join(', ')}` : '';
+};
+
+$('#dialog-inhalt').addEventListener('input', (e) => {
+  if (e.target.matches('[data-hinweis-quelle]')) hinweisPflegen(e.target.value);
+});
+
+/* ---- Dialoge ----------------------------------------------------------- */
+
+const gruppeDialog = (g) => {
+  const vorhanden = Boolean(g);
+  dialogOeffnen(vorhanden ? 'Reimgruppe ändern' : 'Neue Reimgruppe', `
+    <label class="dialog-feld">Begriff
+      <input class="feld" data-kopf data-hinweis-quelle type="text" value="${esc(g ? g.kopf : '')}" placeholder="zum Beispiel Hundesteuer">
+    </label>
+    ${katKaestchen(g ? g.kategorien : [])}`,
+  async () => {
+    await post('/api/reime/gruppe', {
+      id: g ? g.id : null,
+      kopf: $('#dialog-inhalt').querySelector('[data-kopf]').value,
+      kategorien: katGewaehlt()
+    });
+    dialogSchliessen();
+    await reimeLaden();
+    toast(vorhanden ? 'Gruppe geändert' : 'Gruppe angelegt');
+  },
+  vorhanden ? async () => {
+    if (!confirm(`„${g.kopf}" mit allen Reimen löschen?`)) return;
+    await del(`/api/reime/gruppe?id=${encodeURIComponent(g.id)}`);
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Gruppe gelöscht');
+  } : null);
+};
+
+const reimDialog = (gruppeId, vorgabe) => {
+  dialogOeffnen(vorgabe ? 'Reim ändern' : 'Neuer Reim', `
+    <label class="dialog-feld">Reim
+      <input class="feld" data-reim type="text" value="${esc(vorgabe ? vorgabe.text : '')}" placeholder="Wort oder Wortfolge">
+    </label>
+    <p class="hinweis">Mehrere Wörter sind ausdrücklich erlaubt — die Silben laufen über die Wortgrenze hinweg weiter.</p>`,
+  async () => {
+    await post('/api/reime/eintrag', {
+      gruppe: gruppeId,
+      id: vorgabe ? vorgabe.id : null,
+      text: $('#dialog-inhalt').querySelector('[data-reim]').value
+    });
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Reim gesichert');
+  }, null);
+};
+
+const zeileDialog = (z) => {
+  dialogOeffnen(z ? 'Zeile ändern' : 'Neue Zeile', `
+    <label class="dialog-feld">Zeile
+      <input class="feld" data-zeilentext data-hinweis-quelle type="text" value="${esc(z ? z.text : '')}">
+    </label>
+    ${katKaestchen(z ? z.kategorien : [])}`,
+  async () => {
+    await post('/api/reime/zeile', {
+      id: z ? z.id : null,
+      text: $('#dialog-inhalt').querySelector('[data-zeilentext]').value,
+      kategorien: katGewaehlt()
+    });
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Zeile gesichert');
+  },
+  z ? async () => {
+    await del(`/api/reime/zeile?id=${encodeURIComponent(z.id)}`);
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Zeile gelöscht');
+  } : null);
+};
+
+const textDialog = (t) => {
+  dialogOeffnen(t ? 'Text ändern' : 'Neuer Text', `
+    <label class="dialog-feld">Titel
+      <input class="feld" data-titel type="text" value="${esc(t ? t.titel : '')}">
+    </label>
+    <label class="dialog-feld">Text
+      <textarea class="feld feld-hoch" data-inhalt data-hinweis-quelle rows="10">${esc(t ? t.zeilen.map((z) => z.text).join('\n') : '')}</textarea>
+    </label>
+    ${katKaestchen(t ? t.kategorien : [])}`,
+  async () => {
+    await post('/api/reime/text', {
+      id: t ? t.id : null,
+      titel: $('#dialog-inhalt').querySelector('[data-titel]').value,
+      inhalt: $('#dialog-inhalt').querySelector('[data-inhalt]').value,
+      kategorien: katGewaehlt()
+    });
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Text gesichert');
+  },
+  t ? async () => {
+    if (!confirm(`„${t.titel}" löschen?`)) return;
+    await del(`/api/reime/text?id=${encodeURIComponent(t.id)}`);
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Text gelöscht');
+  } : null);
+};
+
+/**
+ * Das Silbenblatt. Alles hier haengt am Wort und wirkt sofort ueberall — die
+ * Aussprache einer Silbe aendert sich nicht, nur weil das Wort in einer anderen
+ * Zeile steht.
+ */
+const silbeDialog = (s) => {
+  const lautWahl = (name, wert) => `<select class="feld" data-${name}>
+      <option value="">—</option>
+      ${S.reimeDaten.laute.map((l) => `<option value="${esc(l)}" ${l === wert ? 'selected' : ''}>${esc(l)}</option>`).join('')}
+    </select>`;
+
+  const zeilen = [0, 1, 2].map((i) => {
+    const a = s.anmerkungen[i] || null;
+    return `<div class="reihe anmerkung-zeile">
+      ${lautWahl(`laut-${i}`, a ? a.laut : '')}
+      <select class="feld" data-prio-${i}>
+        ${S.reimeDaten.prioritaeten.map((p) => `<option value="${esc(p)}" ${(a ? a.prioritaet : 'mittel') === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+
+  dialogOeffnen(`Silbe „${s.primaer}" in „${s.wort}"`, `
+    <p class="hinweis" style="margin-top:0">
+      Gilt für das Wort, nicht nur für diese Zeile. Getroffen ist die Silbe, sobald der
+      geschriebene Kern oder eine der Anmerkungen passt; die Priorität entscheidet über
+      Farbe und Rangfolge, nicht über den Treffer.
+    </p>
+    <label class="dialog-feld">Geschriebener Kern — abweichend gelesen als
+      ${lautWahl('korrektur', s.korrigiert ? s.kern : '')}
+    </label>
+    <p class="hinweis">Leer heißt: so, wie es geschrieben steht.</p>
+    <span class="dialog-feld">Anmerkungen, höchstens drei</span>
+    ${zeilen}
+    <span class="dialog-feld">Was wiegt schwerer?</span>
+    ${wahlFeld('relevanz', [['buchstabe', 'der Buchstabe'], ['anmerkung', 'die Anmerkung']], s.relevanz)}`,
+  async () => {
+    const inhalt = $('#dialog-inhalt');
+    const anmerkungen = [0, 1, 2]
+      .map((i) => ({
+        laut: inhalt.querySelector(`[data-laut-${i}]`).value,
+        prioritaet: inhalt.querySelector(`[data-prio-${i}]`).value
+      }))
+      .filter((a) => a.laut);
+
+    await post('/api/reime/wort', {
+      wort: s.schluessel,
+      silbeIndex: s.silbeIndex,
+      korrektur: inhalt.querySelector('[data-korrektur]').value || null,
+      relevanz: wahlWert('relevanz') || 'buchstabe',
+      anmerkungen
+    });
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Silbe gesichert');
+  }, null);
+};
+
+/* ---- Bedienung der Reimeansicht ---------------------------------------- */
+
+$('#reime-bereiche').addEventListener('click', fangen(async (e) => {
+  const knopf = e.target.closest('[data-bereich]');
+  if (!knopf) return;
+  S.reimeBereich = knopf.dataset.bereich;
+  S.reimeKategorie = null;
+  await reimeLaden();
+}));
+
+$('#reime-kategorien').addEventListener('click', fangen(async (e) => {
+  const knopf = e.target.closest('[data-rkat-wahl]');
+  if (!knopf) return;
+  S.reimeKategorie = knopf.dataset.rkatWahl || null;
+  await reimeLaden();
+}));
+
+$('#reime-neu').addEventListener('click', fangen(() => {
+  if (S.reimeBereich === 'reime') return gruppeDialog(null);
+  if (S.reimeBereich === 'zeilen') return zeileDialog(null);
+  return textDialog(null);
+}));
+
+$('#reime-faerben').addEventListener('change', fangen(async (e) => {
+  const feld = S.reimeBereich === 'zeilen' ? 'faerbenZeilen' : 'faerbenTexte';
+  await post('/api/reime/anzeige', { [feld]: e.target.checked });
+  await reimeLaden();
+}));
+
+$('#reime-such-auf').addEventListener('click', () => {
+  $('#reime-suchblock').classList.toggle('versteckt');
+});
+
+$('#reime-liste').addEventListener('click', fangen(async (e) => {
+  const silbe = e.target.closest('[data-silbe]');
+  if (silbe) return silbeDialog(S.silbenRegister[Number(silbe.dataset.silbe)]);
+
+  const gruppeEl = e.target.closest('[data-gruppe]');
+  const gruppeId = gruppeEl ? gruppeEl.dataset.gruppe : null;
+
+  if (e.target.closest('[data-gruppe-reim]')) return reimDialog(gruppeId, null);
+
+  if (e.target.closest('[data-gruppe-sortieren]')) {
+    await post('/api/reime/gruppe/sortieren', { gruppe: gruppeId });
+    await reimeLaden();
+    return toast('Nach Übereinstimmung sortiert');
+  }
+
+  if (e.target.closest('[data-gruppe-aendern]')) {
+    return gruppeDialog(S.reimeDaten.gruppen.find((g) => g.id === gruppeId));
+  }
+
+  const weg = e.target.closest('[data-reim-weg]');
+  if (weg) {
+    await del(`/api/reime/eintrag?gruppe=${encodeURIComponent(gruppeId)}&id=${encodeURIComponent(weg.dataset.reimWeg)}`);
+    await reimeLaden();
+    return toast('Reim entfernt');
+  }
+
+  const zeileAendern = e.target.closest('[data-zeile-aendern]');
+  if (zeileAendern) {
+    return zeileDialog(S.reimeDaten.zeilen.find((z) => z.id === zeileAendern.dataset.zeileAendern));
+  }
+
+  const textAendern = e.target.closest('[data-text-aendern]');
+  if (textAendern) {
+    return textDialog(S.reimeDaten.texte.find((t) => t.id === textAendern.dataset.textAendern));
+  }
+
+  const rat = e.target.closest('[data-rat]');
+  if (rat) return ratZeigen(rat);
+  return null;
+}));
+
+/** Der kleine Haken unter jedem Reim: klappt die Vorschlagsliste auf. */
+const ratZeigen = async (knopf) => {
+  const behaelter = knopf.closest('.reim-zeile').querySelector('.reim-rat');
+  if (!behaelter.classList.contains('versteckt')) {
+    behaelter.classList.add('versteckt');
+    knopf.classList.remove('aktiv');
+    return;
+  }
+
+  const d = await post('/api/reime/rat', { text: knopf.dataset.rat, ausser: [knopf.dataset.ratId] });
+  behaelter.innerHTML = d.vorschlaege.length
+    ? `<p class="hinweis" style="margin:0 0 6px">Aus dem Bestand, ab ${d.mindest} aufeinanderfolgenden Silben:</p>
+       ${d.vorschlaege.map((v) => `<div class="rat-zeile">
+          <span class="reim-text">${esc(v.text)}</span>
+          <span class="zeile-marke">${v.laenge} Silben am Stück</span>
+          <button class="knopf knopf-still" data-rat-uebernehmen="${esc(v.text)}">Übernehmen</button>
+        </div>`).join('')}`
+    : '<p class="hinweis" style="margin:0">Nichts Passendes im Bestand.</p>';
+  behaelter.classList.remove('versteckt');
+  knopf.classList.add('aktiv');
+};
+
+$('#reime-liste').addEventListener('click', fangen(async (e) => {
+  const uebernehmen = e.target.closest('[data-rat-uebernehmen]');
+  if (!uebernehmen) return;
+  const gruppeId = uebernehmen.closest('[data-gruppe]').dataset.gruppe;
+  await post('/api/reime/eintrag', { gruppe: gruppeId, text: uebernehmen.dataset.ratUebernehmen });
+  await reimeLaden();
+  toast('Reim übernommen');
+}));
+
+/* ---- Silbensuche -------------------------------------------------------- */
+
+const suchfelderBauen = () => {
+  if ($('#such-silben').children.length) return;
+  $('#such-silben').innerHTML = Array.from({ length: 10 }, (unused, i) => `
+    <select class="feld feld-silbe" data-suchsilbe="${i}">
+      <option value="">—</option>
+      ${(S.reimeDaten ? S.reimeDaten.laute : []).map((l) => `<option value="${esc(l)}">${esc(l)}</option>`).join('')}
+    </select>`).join('');
+};
+
+const reimeSuchen = async () => {
+  const muster = [...$$('#such-silben [data-suchsilbe]')].map((f) => f.value).filter(Boolean);
+  if (!muster.length) {
+    $('#such-reime-info').textContent = 'Mindestens eine Silbe auswählen.';
+    $('#such-reime-treffer').innerHTML = '';
+    return;
+  }
+
+  const budget = Math.max(0, Number($('#such-budget').value) || 0);
+  const nurEnde = $('#such-ende').checked;
+  const d = await api(`/api/reime/suche?muster=${encodeURIComponent(muster.join(','))}&budget=${budget}&nurEnde=${nurEnde ? 1 : 0}`);
+
+  S.silbenRegister = [];
+  $('#such-reime-info').textContent = d.treffer.length
+    ? `${d.treffer.length} Treffer für ${muster.join(' · ')}, bis zu ${budget} übersprungene ${budget === 1 ? 'Silbe' : 'Silben'}.`
+    : `Nichts gefunden für ${muster.join(' · ')}.`;
+
+  $('#such-reime-treffer').innerHTML = d.treffer.map((t) => `
+    <div class="reim-zeile">
+      <div class="reim-kopfzeile">
+        <span class="reim-text">${esc(t.text)}</span>
+        ${t.verbrauch ? `<span class="zeile-marke">${t.verbrauch} übersprungen</span>` : ''}
+      </div>
+      ${silbenRaster(t.silben, 0, t.stellen)}
+    </div>`).join('');
+};
+
+$('#such-start').addEventListener('click', fangen(reimeSuchen));
+$('#such-leeren').addEventListener('click', () => {
+  $$('#such-silben [data-suchsilbe]').forEach((f) => { f.value = ''; });
+  $('#such-budget').value = '0';
+  $('#such-ende').checked = false;
+  $('#such-reime-info').textContent = '';
+  $('#such-reime-treffer').innerHTML = '';
+});
+$('#such-reime-treffer').addEventListener('click', (e) => {
+  const silbe = e.target.closest('[data-silbe]');
+  if (silbe) silbeDialog(S.silbenRegister[Number(silbe.dataset.silbe)]);
+});
+
+/* ================================================================ Eigene Reiter
+
+   Eine Ansicht fuer alle selbst angelegten Reiter. Was sie zeigt, steht im
+   Feldschema des Reiters — deshalb wird hier nichts fest verdrahtet, sondern
+   alles aus `S.eigenDaten.felder` gebaut.                                    */
+
+const FELD_LEER = '—';
+
+const feldAnzeige = (feld, wert) => {
+  if (wert === null || wert === undefined || wert === '') return FELD_LEER;
+  if (feld.typ === 'haken') return wert ? 'ja' : 'nein';
+  if (feld.typ === 'geld') return euro(Number(wert));
+  if (feld.typ === 'datum') return formatDE(wert);
+  return String(wert);
+};
+
+const eigenZeichnen = () => {
+  const d = S.eigenDaten;
+  if (!d) return;
+  $('#eigen-titel').textContent = d.reiter.name;
+  $('#eigen-richtung').textContent = S.eigenRichtung === 'ab' ? '↓' : '↑';
+
+  const sort = $('#eigen-sort');
+  sort.innerHTML = `<option value="">zuletzt angelegt</option>
+    ${d.felder.map((f) => `<option value="${esc(f.id)}" ${f.id === S.eigenSort ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}`;
+
+  if (!d.felder.length) {
+    $('#eigen-leer').textContent = 'Dieser Reiter hat noch keine Felder. Anzulegen in den Einstellungen unter „Reiter".';
+    $('#eigen-liste').innerHTML = '';
+    return;
+  }
+
+  $('#eigen-leer').textContent = d.eintraege.length ? '' : 'Noch nichts eingetragen.';
+  $('#eigen-liste').innerHTML = d.eintraege.map((e) => `
+    <article class="karte" data-eigen="${esc(e.id)}">
+      <h3 class="karte-titel">${esc(feldAnzeige(d.felder[0], e.werte[d.felder[0].id]))}</h3>
+      <div class="karte-werte">
+        ${d.felder.slice(1).map((f) => `
+          <span class="karte-feld"><span class="karte-name">${esc(f.name)}</span>
+          <span class="karte-wert">${esc(feldAnzeige(f, e.werte[f.id]))}</span></span>`).join('')}
+      </div>
+    </article>`).join('');
+};
+
+const eigenLaden = async () => {
+  if (!S.eigenReiter) return;
+  const teile = [`reiter=${encodeURIComponent(S.eigenReiter)}`, `richtung=${S.eigenRichtung}`];
+  if (S.eigenSuche) teile.push(`suche=${encodeURIComponent(S.eigenSuche)}`);
+  if (S.eigenSort) teile.push(`sortFeld=${encodeURIComponent(S.eigenSort)}`);
+  S.eigenDaten = await api(`/api/eigen?${teile.join('&')}`);
+  eigenZeichnen();
+};
+
+const eigenFeldEingabe = (feld, wert) => {
+  const w = wert === undefined ? null : wert;
+  if (feld.typ === 'mehrzeilig') {
+    return `<textarea class="feld feld-hoch" data-feld="${esc(feld.id)}" rows="4">${esc(w || '')}</textarea>`;
+  }
+  if (feld.typ === 'haken') {
+    return `<input type="checkbox" data-feld="${esc(feld.id)}" ${w ? 'checked' : ''}>`;
+  }
+  if (feld.typ === 'auswahl') {
+    return `<select class="feld" data-feld="${esc(feld.id)}">
+      <option value="">—</option>
+      ${feld.optionen.map((o) => `<option value="${esc(o)}" ${o === w ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+    </select>`;
+  }
+  /* Zahl und Geld bewusst als Textfeld: ein `number`-Feld verwirft in
+     deutscher Schreibweise getippte Kommazahlen stillschweigend. Umgerechnet
+     wird beim Speichern in eigene.js. */
+  const zahlig = feld.typ === 'zahl' || feld.typ === 'geld';
+  const typ = feld.typ === 'datum' ? 'date' : 'text';
+  const modus = zahlig ? ' inputmode="decimal"' : '';
+  return `<input class="feld" type="${typ}"${modus} data-feld="${esc(feld.id)}" value="${esc(w === null ? '' : w)}">`;
+};
+
+const eigenDialog = (eintrag) => {
+  const d = S.eigenDaten;
+  dialogOeffnen(eintrag ? `${d.reiter.name} ändern` : `Neu in ${d.reiter.name}`,
+    d.felder.map((f) => `<label class="dialog-feld">${esc(f.name)}${f.pflicht ? ' *' : ''}
+      ${eigenFeldEingabe(f, eintrag ? eintrag.werte[f.id] : null)}</label>`).join(''),
+    async () => {
+      const werte = {};
+      for (const f of d.felder) {
+        const feld = $('#dialog-inhalt').querySelector(`[data-feld="${f.id}"]`);
+        werte[f.id] = f.typ === 'haken' ? feld.checked : feld.value;
+      }
+      await post('/api/eigen', { reiter: S.eigenReiter, id: eintrag ? eintrag.id : null, werte });
+      dialogSchliessen();
+      await eigenLaden();
+      toast('Gesichert');
+    },
+    eintrag ? async () => {
+      if (!confirm('Diesen Eintrag löschen?')) return;
+      await del(`/api/eigen?reiter=${encodeURIComponent(S.eigenReiter)}&id=${encodeURIComponent(eintrag.id)}`);
+      dialogSchliessen();
+      await eigenLaden();
+      toast('Gelöscht');
+    } : null);
+};
+
+$('#eigen-neu').addEventListener('click', fangen(() => {
+  if (!S.eigenDaten || !S.eigenDaten.felder.length) throw new Error('Erst Felder anlegen — in den Einstellungen unter „Reiter".');
+  eigenDialog(null);
+}));
+
+$('#eigen-liste').addEventListener('click', fangen((e) => {
+  const karte = e.target.closest('[data-eigen]');
+  if (!karte) return;
+  eigenDialog(S.eigenDaten.eintraege.find((e) => e.id === karte.dataset.eigen));
+}));
+
+$('#eigen-suche').addEventListener('input', fangen(async (e) => {
+  S.eigenSuche = e.target.value.trim();
+  await eigenLaden();
+}));
+
+$('#eigen-sort').addEventListener('change', fangen(async (e) => {
+  S.eigenSort = e.target.value || null;
+  await eigenLaden();
+}));
+
+$('#eigen-richtung').addEventListener('click', fangen(async () => {
+  S.eigenRichtung = S.eigenRichtung === 'ab' ? 'auf' : 'ab';
+  await eigenLaden();
+}));
+
+/* ================================================================ Einstellungen
+   für Reiter, Silbenfarben und Reimkategorien                                */
+
+const reiterZeichnen = () => {
+  $('#reiter-liste').innerHTML = S.reiter.map((r) => {
+    const unbeweglich = ['start', 'einstellungen'].includes(r.id);
+    return `<div class="kat-zeile" data-reiter="${esc(r.id)}">
+      <input class="feld" type="text" value="${esc(r.name)}" data-name>
+      <button class="knopf knopf-still" data-hoch title="nach vorn" ${unbeweglich ? 'disabled' : ''}>‹</button>
+      <button class="knopf knopf-still" data-runter title="nach hinten" ${unbeweglich ? 'disabled' : ''}>›</button>
+      <label class="dialog-schalter" title="${unbeweglich ? 'bleibt immer sichtbar' : 'in der Kopfleiste zeigen'}">
+        <input type="checkbox" data-sichtbar ${r.sichtbar ? 'checked' : ''} ${unbeweglich ? 'disabled' : ''}> sichtbar
+      </label>
+      ${r.typ === 'eigen' ? `
+        <label class="dialog-schalter" title="eigene Kachel auf der Startseite">
+          <input type="checkbox" data-kachel ${r.kachel && r.kachel.aktiv ? 'checked' : ''}> Kachel
+        </label>
+        <button class="knopf knopf-still" data-felder>Felder (${(r.felder || []).length})</button>` : ''}
+      <button class="knopf knopf-still" data-speichern>Sichern</button>
+      ${r.typ === 'eigen' ? '<button class="knopf knopf-gefahr" data-loeschen>Löschen</button>' : ''}
+    </div>`;
+  }).join('');
+};
+
+/** Feldschema eines eigenen Reiters. Entfernte Felder verlieren keine Werte. */
+
+const feldSchemaZeile = (f) => `<div class="feld-zeile" data-feld-zeile>
+    <input class="feld" type="text" data-fname value="${esc(f ? f.name : '')}" placeholder="Feldname">
+    <select class="feld" data-ftyp>
+      ${(S.feldTypen || []).map((t) => `<option value="${esc(t.id)}" ${f && f.typ === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+    </select>
+    <input class="feld" type="text" data-foptionen value="${esc(f ? (f.optionen || []).join(', ') : '')}" placeholder="Auswahl, mit Komma">
+    <label class="dialog-schalter"><input type="checkbox" data-fpflicht ${f && f.pflicht ? 'checked' : ''}> Pflicht</label>
+    <button type="button" class="knopf knopf-gefahr" data-fweg title="Feld entfernen">✕</button>
+    <input type="hidden" data-fid value="${esc(f ? f.id : '')}">
+  </div>`;
+
+/* Ein Zuhoerer fuer alle Feldschema-Dialoge. Ihn im Dialog selbst anzuhaengen
+   wuerde ihn bei jedem Oeffnen erneut anhaengen. */
+$('#dialog-inhalt').addEventListener('click', (e) => {
+  if (e.target.closest('[data-feld-neu]')) {
+    $('#dialog-inhalt').querySelector('[data-felder-liste]').insertAdjacentHTML('beforeend', feldSchemaZeile(null));
+  }
+  const weg = e.target.closest('[data-fweg]');
+  if (weg) weg.closest('[data-feld-zeile]').remove();
+});
+
+const felderDialog = (reiter) => {
+  dialogOeffnen(`Felder von „${reiter.name}“`, `
+    <p class="hinweis" style="margin-top:0">
+      Die Reihenfolge hier ist die Reihenfolge im Dialog; das erste Feld ist die Überschrift
+      der Karte. Ein entferntes Feld nimmt seine Werte nicht mit — legst du es wieder an,
+      sind sie zurück.
+    </p>
+    <div data-felder-liste>${(reiter.felder || []).map(feldSchemaZeile).join('')}</div>
+    <button type="button" class="knopf knopf-still" data-feld-neu>+ Feld</button>`,
+  async () => {
+    const felder = [...$('#dialog-inhalt').querySelectorAll('[data-feld-zeile]')].map((z) => ({
+      id: z.querySelector('[data-fid]').value || undefined,
+      name: z.querySelector('[data-fname]').value,
+      typ: z.querySelector('[data-ftyp]').value,
+      pflicht: z.querySelector('[data-fpflicht]').checked,
+      optionen: z.querySelector('[data-foptionen]').value.split(',').map((o) => o.trim()).filter(Boolean)
+    }));
+    await post('/api/reiter', { id: reiter.id, felder });
+    dialogSchliessen();
+    await einstellungenLaden();
+    toast('Felder gesichert');
+  }, null);
+};
+
+$('#reiter-liste').addEventListener('click', fangen(async (e) => {
+  const zeileEl = e.target.closest('[data-reiter]');
+  if (!zeileEl) return;
+  const id = zeileEl.dataset.reiter;
+  const reiter = S.reiter.find((r) => r.id === id);
+
+  if (e.target.closest('[data-felder]')) return felderDialog(reiter);
+
+  if (e.target.closest('[data-speichern]')) {
+    await post('/api/reiter', {
+      id,
+      name: zeileEl.querySelector('[data-name]').value,
+      sichtbar: zeileEl.querySelector('[data-sichtbar]').checked,
+      kachel: zeileEl.querySelector('[data-kachel]')
+        ? { aktiv: zeileEl.querySelector('[data-kachel]').checked }
+        : undefined
+    });
+    await einstellungenLaden();
+    return toast('Reiter gesichert');
+  }
+
+  if (e.target.closest('[data-loeschen]')) {
+    if (!confirm(`„${reiter.name}" mit allen Einträgen löschen? Das lässt sich nicht rückgängig machen.`)) return;
+    await del(`/api/reiter?id=${encodeURIComponent(id)}`);
+    if (S.eigenReiter === id) await ansichtWechseln('einstellungen');
+    await einstellungenLaden();
+    return toast('Reiter gelöscht');
+  }
+
+  const hoch = e.target.closest('[data-hoch]');
+  const runter = e.target.closest('[data-runter]');
+  if (hoch || runter) {
+    const ids = S.reiter.map((r) => r.id);
+    const stelle = ids.indexOf(id);
+    const ziel = hoch ? stelle - 1 : stelle + 1;
+    // Start und Einstellungen sind die Klammer; dazwischen darf getauscht werden.
+    if (ziel <= 0 || ziel >= ids.length - 1) return null;
+    [ids[stelle], ids[ziel]] = [ids[ziel], ids[stelle]];
+    await post('/api/reiter/reihenfolge', { ids });
+    await einstellungenLaden();
+    return null;
+  }
+  return null;
+}));
+
+$('#reiter-anlegen').addEventListener('click', fangen(async () => {
+  const name = $('#reiter-name').value.trim();
+  if (!name) throw new Error('Name fehlt.');
+  await post('/api/reiter', { name });
+  $('#reiter-name').value = '';
+  await einstellungenLaden();
+  toast('Reiter angelegt');
+}));
+
+const farbenZeichnen = () => {
+  const r = S.reimeEinst;
+  if (!r) return;
+  $('#laut-farben').innerHTML = r.laute.map((l) => `
+    <label class="laut-feld">
+      <span class="laut-name">${esc(l)}</span>
+      <input class="feld feld-farbe" type="color" value="${esc(r.farben[l])}" data-laut="${esc(l)}">
+    </label>`).join('');
+  $('#reime-mindest').value = r.anzeige.mindestKette;
+  $('#reime-faerben-zeilen').checked = r.anzeige.faerbenZeilen;
+  $('#reime-faerben-texte').checked = r.anzeige.faerbenTexte;
+};
+
+$('#laut-farben').addEventListener('change', fangen(async (e) => {
+  const feld = e.target.closest('[data-laut]');
+  if (!feld) return;
+  await post('/api/reime/anzeige', { farben: { [feld.dataset.laut]: feld.value } });
+  await einstellungenLaden();
+}));
+
+const ZUFALLSTON = () => {
+  const winkel = Math.floor(Math.random() * 360);
+  return `hsl(${winkel} 75% 65%)`;
+};
+
+/** Aus einem hsl-Ton eine Hex-Angabe machen — gespeichert wird nur Hex. */
+const alsHex = (farbe) => {
+  const probe = document.createElement('span');
+  probe.style.color = farbe;
+  document.body.appendChild(probe);
+  const [r, g, b] = getComputedStyle(probe).color.match(/\d+/g).map(Number);
+  probe.remove();
+  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+};
+
+$('#laut-wuerfeln').addEventListener('click', fangen(async () => {
+  const farben = {};
+  // Gleichmaessig ueber den Farbkreis verteilt und dann gedreht: rein zufaellige
+  // Toene liegen zu oft zu dicht beieinander.
+  const start = Math.floor(Math.random() * 360);
+  S.reimeEinst.laute.forEach((l, i) => {
+    const winkel = (start + Math.round((360 / S.reimeEinst.laute.length) * i)) % 360;
+    farben[l] = alsHex(`hsl(${winkel} 75% 65%)`);
+  });
+  await post('/api/reime/anzeige', { farben });
+  await einstellungenLaden();
+  toast('Farben neu gewürfelt');
+}));
+
+$('#laut-zurueck').addEventListener('click', fangen(async () => {
+  await post('/api/reime/anzeige', { farben: ANFANGSFARBEN });
+  await einstellungenLaden();
+  toast('Anfangsstand hergestellt');
+}));
+
+$('#reime-mindest').addEventListener('change', fangen(async (e) => {
+  await post('/api/reime/anzeige', { mindestKette: Number(e.target.value) });
+  await einstellungenLaden();
+}));
+
+$('#reime-faerben-zeilen').addEventListener('change', fangen(async (e) => {
+  await post('/api/reime/anzeige', { faerbenZeilen: e.target.checked });
+}));
+
+$('#reime-faerben-texte').addEventListener('change', fangen(async (e) => {
+  await post('/api/reime/anzeige', { faerbenTexte: e.target.checked });
+}));
+
+const rkatZeichnen = () => {
+  const r = S.reimeEinst;
+  if (!r) return;
+  $$('#rkat-bereiche [data-bereich]').forEach((b) => b.classList.toggle('aktiv', b.dataset.bereich === S.rkatBereich));
+  const liste = r.kategorien[S.rkatBereich] || [];
+  $('#rkat-liste').innerHTML = liste.length ? liste.map((k) => `
+    <div class="kat-zeile" data-rkat="${esc(k.id)}">
+      <input class="feld feld-farbe" type="color" value="${esc(k.farbe)}" data-farbe>
+      <input class="feld" type="text" value="${esc(k.name)}" data-name>
+      <input class="feld" type="text" value="${esc(k.stichwoerter.join(', '))}" data-stich placeholder="Stichwörter">
+      <button class="knopf knopf-still" data-speichern>Sichern</button>
+      <button class="knopf knopf-gefahr" data-loeschen>Löschen</button>
+    </div>`).join('')
+    : leer('Noch keine Kategorie in diesem Reiter.');
+};
+
+$('#rkat-bereiche').addEventListener('click', (e) => {
+  const knopf = e.target.closest('[data-bereich]');
+  if (!knopf) return;
+  S.rkatBereich = knopf.dataset.bereich;
+  rkatZeichnen();
+});
+
+$('#rkat-liste').addEventListener('click', fangen(async (e) => {
+  const zeileEl = e.target.closest('[data-rkat]');
+  if (!zeileEl) return;
+  const id = zeileEl.dataset.rkat;
+
+  if (e.target.closest('[data-speichern]')) {
+    await post('/api/reime/kategorie', {
+      id,
+      bereich: S.rkatBereich,
+      name: zeileEl.querySelector('[data-name]').value,
+      farbe: zeileEl.querySelector('[data-farbe]').value,
+      stichwoerter: zeileEl.querySelector('[data-stich]').value.split(',')
+    });
+    await einstellungenLaden();
+    return toast('Kategorie gesichert');
+  }
+
+  if (e.target.closest('[data-loeschen]')) {
+    await del(`/api/reime/kategorie?bereich=${S.rkatBereich}&id=${encodeURIComponent(id)}`);
+    await einstellungenLaden();
+    return toast('Kategorie gelöscht');
+  }
+  return null;
+}));
+
+$('#rkat-anlegen').addEventListener('click', fangen(async () => {
+  const name = $('#rkat-name').value.trim();
+  if (!name) throw new Error('Name fehlt.');
+  await post('/api/reime/kategorie', {
+    bereich: S.rkatBereich,
+    name,
+    farbe: $('#rkat-farbe').value,
+    stichwoerter: $('#rkat-stich').value.split(',')
+  });
+  $('#rkat-name').value = '';
+  $('#rkat-stich').value = '';
+  await einstellungenLaden();
+  toast('Kategorie angelegt');
+}));
+
 // ---------------------------------------------------------------- Neu zeichnen
 
 const neuZeichnen = async () => {
@@ -2545,6 +3516,8 @@ const neuZeichnen = async () => {
   if (S.ansicht === 'aufgaben') return aufgabenZeichnen();
   if (S.ansicht === 'tsz') return tszLaden();
   if (S.ansicht === 'finanzen') return finanzenLaden();
+  if (S.ansicht === 'reime') return reimeLaden();
+  if (S.eigenReiter) return eigenLaden();
   if (S.ansicht === 'suche') return suchen();
   if (S.ansicht === 'einstellungen') return katZeichnen();
   return null;

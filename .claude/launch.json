@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hddatenbank",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8790", "--directory", "C:\\Users\\kurat\\Desktop\\HDDatenbank"],
+      "port": 8790
+    }
+  ]
+}

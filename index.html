@@ -7,7 +7,7 @@
 <title>HDDatenbank</title>
 <!-- Das ?v= zwingt den Browser, nach einer Veroeffentlichung neu zu laden.
      Bei jeder Fassung mitziehen, zusammen mit lib/fassung.js. -->
-<link rel="stylesheet" href="./style.css?v=2026-07-27">
+<link rel="stylesheet" href="./style.css?v=2026-08-31">
 </head>
 <body>
 
@@ -37,6 +37,7 @@
       <button class="tab" data-ansicht="aufgaben">Aufgaben</button>
       <button class="tab" data-ansicht="tsz">Tierschutzzentrum</button>
       <button class="tab" data-ansicht="finanzen">Finanzen</button>
+      <button class="tab" data-ansicht="reime">Reime</button>
       <button class="tab" data-ansicht="suche">Suche</button>
       <button class="tab" data-ansicht="einstellungen">Einstellungen</button>
     </nav>
@@ -73,7 +74,7 @@
       <!-- Die Kacheln liegen hier und werden beim Laden in ihre Spalte einsortiert. -->
       <div id="kachel-lager" class="versteckt">
         <section id="fristen-block" class="block block-warnung" data-kachel="fristen">
-          <h2 class="block-titel">Fristen in den nächsten 14 Tagen</h2>
+          <h2 class="block-titel">Fristen und Termine in den nächsten 14 Tagen</h2>
           <div id="fristen-liste" class="liste"></div>
         </section>
 
@@ -184,6 +185,62 @@
       <section id="fin-regel-block" class="block versteckt"></section>
     </section>
 
+    <!-- Reime, Zeilen, Texte. Die drei Unterreiter teilen sich Kategorienleiste
+         und Liste; was gezeichnet wird, entscheidet der gewählte Bereich. -->
+    <section id="ansicht-reime" class="ansicht versteckt">
+      <div class="kal-kopf">
+        <span class="wahl" id="reime-bereiche">
+          <button type="button" data-bereich="reime" class="aktiv">Reime</button>
+          <button type="button" data-bereich="zeilen">Zeilen</button>
+          <button type="button" data-bereich="texte">Texte</button>
+        </span>
+        <span class="kal-titel"></span>
+        <label class="dialog-schalter" id="reime-faerben-schalter">
+          <input type="checkbox" id="reime-faerben"> Silben färben und ausrichten
+        </label>
+        <button id="reime-such-auf" class="knopf knopf-still">Silbensuche</button>
+        <button id="reime-neu" class="knopf knopf-neon">Neu</button>
+      </div>
+
+      <div id="reime-kategorien" class="kat-leiste"></div>
+
+      <section id="reime-suchblock" class="block versteckt">
+        <h2 class="block-titel">
+          Silbensuche <span class="block-neben">bis zu zehn Silben in dieser Reihenfolge</span>
+        </h2>
+        <div id="such-silben" class="silben-wahl"></div>
+        <div class="reihe" style="margin-top:8px">
+          <label class="feld-mit-text">
+            übersprungene Silben
+            <input id="such-budget" class="feld feld-schmal" type="number" min="0" max="20" step="1" value="0">
+          </label>
+          <label class="dialog-schalter">
+            <input type="checkbox" id="such-ende"> Treffer muss auf der letzten Silbe enden
+          </label>
+          <button id="such-start" class="knopf knopf-neon">Suchen</button>
+          <button id="such-leeren" class="knopf knopf-still">Leeren</button>
+        </div>
+        <p id="such-reime-info" class="hinweis"></p>
+        <div id="such-reime-treffer"></div>
+      </section>
+
+      <div id="reime-liste"></div>
+    </section>
+
+    <!-- Ein Abschnitt für alle selbst angelegten Reiter. Welcher gerade gemeint
+         ist, steht in S.eigenReiter. -->
+    <section id="ansicht-eigen" class="ansicht versteckt">
+      <div class="kal-kopf">
+        <h2 class="kal-titel" id="eigen-titel"></h2>
+        <input id="eigen-suche" class="feld" type="search" placeholder="Suchen">
+        <select id="eigen-sort" class="feld"></select>
+        <button id="eigen-richtung" class="knopf knopf-still" title="Richtung umkehren">↑</button>
+        <button id="eigen-neu" class="knopf knopf-neon">Neuer Eintrag</button>
+      </div>
+      <p id="eigen-leer" class="hinweis"></p>
+      <div id="eigen-liste" class="karten"></div>
+    </section>
+
     <section id="ansicht-suche" class="ansicht versteckt">
       <div class="such-kopf">
         <input id="such-feld" class="schnell-feld" type="search" placeholder="Wort eingeben, zum Beispiel Futter">
@@ -217,6 +274,63 @@
         <div class="reihe" style="margin-top:10px">
           <span class="hinweis" style="margin:0 4px 0 0">Vorlage:</span>
           <span id="ed-vorlagen" class="wahl"></span>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Reiter <span class="block-neben">Kopfleiste</span></h2>
+        <p class="hinweis" style="margin-top:0">
+          Umbenennen, aus- und einblenden, verschieben. Start und Einstellungen bleiben stehen,
+          sonst sperrst du dich aus. Eigene Reiter kannst du zusätzlich anlegen, mit eigenen
+          Feldern versehen und wieder entfernen — beim Entfernen gehen ihre Einträge mit.
+        </p>
+        <div id="reiter-liste" class="kat-liste"></div>
+        <div class="reihe">
+          <input id="reiter-name" class="feld" type="text" placeholder="Neuer eigener Reiter">
+          <button id="reiter-anlegen" class="knopf knopf-neon">Anlegen</button>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Silbenfarben <span class="block-neben">Reime</span></h2>
+        <p class="hinweis" style="margin-top:0">
+          Zwölf Laute, zwölf Farben. Welche Farbe welcher Laut bekommt, ist Geschmackssache —
+          wichtig ist nur, dass du sie auseinanderhältst.
+        </p>
+        <div id="laut-farben" class="laut-farben"></div>
+        <div class="reihe" style="margin-top:10px">
+          <button id="laut-wuerfeln" class="knopf knopf-still">Farben neu würfeln</button>
+          <button id="laut-zurueck" class="knopf knopf-still">Anfangsstand</button>
+        </div>
+        <div class="reihe" style="margin-top:10px">
+          <label class="feld-mit-text">
+            Vorschläge ab
+            <input id="reime-mindest" class="feld feld-schmal" type="number" min="1" max="6" step="1" value="2">
+            aufeinanderfolgenden Silben
+          </label>
+        </div>
+        <label class="dialog-schalter"><input type="checkbox" id="reime-faerben-zeilen"> Silben auch im Reiter „Zeilen" färben</label>
+        <label class="dialog-schalter"><input type="checkbox" id="reime-faerben-texte"> Silben auch im Reiter „Texte" färben</label>
+      </section>
+
+      <section class="block">
+        <h2 class="block-titel">Kategorien <span class="block-neben">Reime, Zeilen, Texte</span></h2>
+        <p class="hinweis" style="margin-top:0">
+          Jeder der drei Reiter hat seine eigene Liste. Stichwörter sind der Haken, an dem
+          der Hinweis „passt vielleicht zu …" beim Schreiben hängt — kommagetrennt eintragen.
+          Löschen geht nur, solange nichts daran hängt.
+        </p>
+        <div class="wahl" id="rkat-bereiche">
+          <button type="button" data-bereich="reime" class="aktiv">Reime</button>
+          <button type="button" data-bereich="zeilen">Zeilen</button>
+          <button type="button" data-bereich="texte">Texte</button>
+        </div>
+        <div id="rkat-liste" class="kat-liste"></div>
+        <div class="reihe">
+          <input id="rkat-name" class="feld" type="text" placeholder="Neue Kategorie">
+          <input id="rkat-stich" class="feld" type="text" placeholder="Stichwörter, mit Komma">
+          <input id="rkat-farbe" class="feld feld-farbe" type="color" value="#34e2e2">
+          <button id="rkat-anlegen" class="knopf knopf-neon">Anlegen</button>
         </div>
       </section>
 
@@ -391,6 +505,6 @@
 
 <div id="toast" class="toast versteckt"></div>
 
-<script type="module" src="./app.js?v=2026-07-27"></script>
+<script type="module" src="./app.js?v=2026-08-31"></script>
 </body>
 </html>

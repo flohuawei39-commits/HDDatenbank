@@ -1,7 +1,8 @@
 # HDDatenbank
 
 Persönliches Dashboard: Kalender, Aufgaben, Can-Protokoll, Gemeinde-Akten, Fristen und
-Finanzen mit PDF-Import. Läuft vollständig im Browser, ohne Server.
+Finanzen mit PDF-Import, dazu eine Reimwerkstatt und selbst angelegte Reiter. Läuft
+vollständig im Browser, ohne Server.
 
 Die Daten liegen verschlüsselt in einem privaten GitHub-Repository und stehen damit auf
 jedem Gerät zur Verfügung. Verschlüsselt und entschlüsselt wird ausschließlich im Browser;
@@ -17,6 +18,39 @@ GitHub sieht nur Kauderwelsch.
 
 Es gibt keinen Server. `index.html` lädt `app.js`, das über `lib/routen.js` dieselben
 Aufrufe bedient, die früher an einen Node-Server gingen.
+
+## Reime, Zeilen, Texte
+
+Der Reiter „Reime" hat drei Unterreiter. Gerechnet wird überall mit **Silbenkernen**: dem
+Vokal, Umlaut oder Doppellaut, der in einer Silbe steckt. „Hundesteuer" ergibt u, e, eu, e.
+Fest verabredet sind dabei äu → eu, ai und ay → ei, y → i, ie → i; Doppelvokale und
+Dehnungs-h fallen auf den Grundvokal zusammen. Das Regelwerk steht in `lib/silben.js` und
+kommt ohne Wörterbuch aus — was daneben liegt, korrigierst du an der Silbe selbst.
+
+- **Reime**: ein Kopfbegriff, darunter die Reime. Die Zeilen werden so verschoben, dass die
+  passenden Silben untereinander stehen; hinter jeder steht, wie viele Silben zur Zeile
+  darüber und darunter passen und wie viele es insgesamt sind. Der Haken unter einer Zeile
+  klappt Vorschläge aus dem Bestand auf.
+- **Zeilen** sammelt einzelne Zeilen, **Texte** ganze Stücke. Färbung und Ausrichtung gibt
+  es dort auch, sind aber standardmäßig aus (Einstellungen › Silbenfarben).
+
+Ein Klick auf eine Silbe öffnet ihre **Anmerkungen**: bis zu drei weitere Laute mit
+Priorität, dazu der Schalter, ob der geschriebene Buchstabe oder die Anmerkung schwerer
+wiegt. Getroffen ist eine Silbe, sobald der Kern **oder** eine Anmerkung passt — die
+Priorität entscheidet nur über Farbe und Rangfolge. Anmerkungen hängen am Wort und gelten
+damit überall.
+
+Die **Silbensuche** nimmt bis zu zehn Silben in fester Reihenfolge. Die Zahl daneben sagt,
+wie viele fremde Silben dazwischen übersprungen werden dürfen; was vor oder hinter dem
+Muster steht, bleibt frei. Gesucht wird nur im Reime-Bestand.
+
+## Eigene Reiter
+
+Unter Einstellungen › Reiter lassen sich die vorhandenen Reiter umbenennen, ausblenden und
+verschieben — außer Start und Einstellungen, sonst sperrt man sich aus. Dazu kommen eigene
+Reiter mit selbst festgelegten Feldern (Text, mehrzeilig, Zahl, Geld, Datum, Auswahl,
+Haken), wahlweise mit eigener Kachel auf der Startseite. Ein entferntes Feld nimmt seine
+Werte nicht mit: legt man es wieder an, sind sie zurück.
 
 ## Einrichten
 
