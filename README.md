@@ -41,6 +41,11 @@ wiegt. Getroffen ist eine Silbe, sobald der Kern **oder** eine Anmerkung passt �
 Priorität entscheidet nur über Farbe und Rangfolge. Anmerkungen hängen am Wort und gelten
 damit überall.
 
+Stimmt die gerechnete Ausrichtung einmal nicht, schieben die Pfeile ‹ und › eine Zeile von
+Hand um je eine Silbenzelle — beliebig oft, ohne Grenze. Wandert eine Zeile über den linken
+Rand hinaus, rückt die Gruppe nach, statt sie abzuschneiden. Ein gesetzter Schub hängt an
+der Zeile und bringt den Knopf ⟲ mit, der die Rechnung wiederherstellt.
+
 Ein Eintrag kann den Reiter wechseln: im Ändern-Fenster steht „Verschieben nach". Eine
 Gruppe zerfällt dabei in ihren Kopfbegriff und die Reime darunter, ein Text in seine
 Zeilen, eine Zeile wird zum Kopfbegriff einer neuen Gruppe. Kategorien wandern nur mit,

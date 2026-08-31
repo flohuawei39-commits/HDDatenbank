@@ -2696,6 +2696,15 @@ const silbenRaster = (silben, versatz = 0, treffer = null) => {
   return `<div class="silben-raster">${zellen.join('')}</div>`;
 };
 
+/* Die Pfeile schieben eine Zeile von Hand um je eine Silbenzelle. Ohne Grenze:
+   was links herausragen wuerde, rueckt beim Zeichnen die ganze Gruppe nach
+   rechts. Erst wenn ein Schub gesetzt ist, kommt der Weg zurueck dazu. */
+const schubPfeile = (z) => `
+  <button class="reim-schub" data-schub="-1" data-schub-id="${esc(z.id)}" title="eine Silbe nach links">‹</button>
+  <button class="reim-schub" data-schub="1" data-schub-id="${esc(z.id)}" title="eine Silbe nach rechts">›</button>
+  ${z.schub ? `<button class="reim-schub" data-schub="0" data-schub-id="${esc(z.id)}"
+      title="Verschiebung zurücknehmen">⟲</button>` : ''}`;
+
 const zaehlerMarke = (z) => `<span class="reim-zaehler" title="passende Silben nach oben und nach unten, dann Silben insgesamt">
   ↑${z.zaehlung.oben} ↓${z.zaehlung.unten} · ${z.zaehlung.gesamt}</span>`;
 
@@ -2704,6 +2713,7 @@ const reimZeile = (z, gruppe) => `
     <div class="reim-kopfzeile">
       <span class="reim-text">${esc(z.text)}</span>
       ${zaehlerMarke(z)}
+      ${schubPfeile(z)}
       <button class="reim-ausklapp" data-rat="${esc(z.text)}" data-rat-id="${esc(z.id)}"
         title="passende Reime aus dem Bestand">✓</button>
       ${z.kopf ? '' : `<button class="reim-weg" data-reim-weg="${esc(z.id)}" title="Reim entfernen">✕</button>`}
@@ -2770,6 +2780,7 @@ const reimeZeichnen = () => {
             <div class="reim-kopfzeile">
               <span class="reim-text">${esc(z.text)}</span>
               ${katMarken(z.kategorien)}
+              ${faerben ? schubPfeile(z) : ''}
               <button class="reim-weg" data-zeile-aendern="${esc(z.id)}" title="ändern">✎</button>
             </div>
             ${faerben ? silbenRaster(z.silben, z.versatz) : ''}
@@ -3096,6 +3107,17 @@ $('#reime-liste').addEventListener('click', fangen(async (e) => {
   const textAendern = e.target.closest('[data-text-aendern]');
   if (textAendern) {
     return textDialog(S.reimeDaten.texte.find((t) => t.id === textAendern.dataset.textAendern));
+  }
+
+  const schub = e.target.closest('[data-schub]');
+  if (schub) {
+    const schritt = Number(schub.dataset.schub);
+    await post('/api/reime/schub', {
+      id: schub.dataset.schubId,
+      schritt,
+      zuruecksetzen: schritt === 0
+    });
+    return reimeLaden();
   }
 
   const rat = e.target.closest('[data-rat]');
