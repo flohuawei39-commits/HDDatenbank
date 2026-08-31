@@ -1360,6 +1360,33 @@ $('#dialog-speichern').addEventListener('click', fangen(async () => { if (dialog
 $('#dialog-loeschen').addEventListener('click', fangen(async () => { if (dialogLoeschen) await dialogLoeschen(); }));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#dialog').classList.contains('versteckt')) dialogSchliessen(); });
 
+/* ---- Enter schickt ab -------------------------------------------------------
+
+   Der Weg zur Maus ist der Umweg, am Telefon erst recht. Drei Regeln, in dieser
+   Reihenfolge: ein Feld mit `data-enter` meint den Knopf mit dieser Kennung,
+   eine Zeile mit eigenem Sichern-Knopf meint diesen, und im Dialog ist immer
+   „Speichern" gemeint. Mehrzeilige Felder bleiben aussen vor — dort ist Enter
+   der Zeilenumbruch.                                                          */
+
+const enterZiel = (feld) => {
+  if (feld.dataset.enter) return document.getElementById(feld.dataset.enter);
+  const zeile = feld.closest('.kat-zeile');
+  if (zeile) return zeile.querySelector('[data-speichern]');
+  // Die aufklappende Neu-Zeile bringt ihren eigenen Zuhoerer mit.
+  if (feld.closest('#dialog-inhalt') && !feld.closest('.neu-zeile')) return $('#dialog-speichern');
+  return null;
+};
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  const feld = e.target;
+  if (!feld.matches || !feld.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="file"])')) return;
+  const ziel = enterZiel(feld);
+  if (!ziel || ziel.disabled || ziel.classList.contains('versteckt')) return;
+  e.preventDefault();
+  ziel.click();
+});
+
 const wahlFeld = (name, werte, aktiv, toene = {}) => `
   <div class="wahl" data-wahl="${name}">
     ${werte.map(([wert, label]) => `<button type="button" data-wert="${esc(wert)}" class="${wert === aktiv ? 'aktiv' : ''}" style="${toene[wert] ? `--ton:${toene[wert]}` : ''}">${esc(label)}</button>`).join('')}
@@ -2814,13 +2841,45 @@ $('#dialog-inhalt').addEventListener('input', (e) => {
 
 /* ---- Dialoge ----------------------------------------------------------- */
 
+/* ---- Umzug zwischen den Reitern --------------------------------------------
+
+   Dieselbe Zeile kann heute ein Reim und morgen eine Punchline sein. Statt sie
+   abzuschreiben, wandert der Eintrag mitsamt seiner Kategorie hinueber; eine
+   Gruppe zerfaellt dabei in einzelne Zeilen, ein Text ebenso.               */
+
+const BEREICH_NAMEN = { reime: 'Reime', zeilen: 'Zeilen', texte: 'Texte' };
+
+const umzugFeld = (von, id) => `
+  <span class="dialog-feld">Verschieben nach</span>
+  <div class="reihe">
+    ${Object.entries(BEREICH_NAMEN).filter(([b]) => b !== von).map(([b, name]) => `
+      <button type="button" class="knopf knopf-still" data-umzug="${b}" data-umzug-von="${von}" data-umzug-id="${esc(id)}">${name}</button>`).join('')}
+  </div>
+  <p class="hinweis">Wirkt sofort und schließt dieses Fenster. Ungesicherte Änderungen hier gehen dabei verloren.</p>`;
+
+$('#dialog-inhalt').addEventListener('click', fangen(async (e) => {
+  const knopf = e.target.closest('[data-umzug]');
+  if (!knopf) return;
+  const ziel = BEREICH_NAMEN[knopf.dataset.umzug];
+  if (!confirm(`Nach „${ziel}" verschieben?`)) return;
+  await post('/api/reime/verschieben', {
+    von: knopf.dataset.umzugVon,
+    nach: knopf.dataset.umzug,
+    id: knopf.dataset.umzugId
+  });
+  dialogSchliessen();
+  await reimeLaden();
+  toast(`Nach ${ziel} verschoben`);
+}));
+
 const gruppeDialog = (g) => {
   const vorhanden = Boolean(g);
   dialogOeffnen(vorhanden ? 'Reimgruppe ändern' : 'Neue Reimgruppe', `
     <label class="dialog-feld">Begriff
       <input class="feld" data-kopf data-hinweis-quelle type="text" value="${esc(g ? g.kopf : '')}" placeholder="zum Beispiel Hundesteuer">
     </label>
-    ${katKaestchen(g ? g.kategorien : [])}`,
+    ${katKaestchen(g ? g.kategorien : [])}
+    ${vorhanden ? umzugFeld('reime', g.id) : ''}`,
   async () => {
     await post('/api/reime/gruppe', {
       id: g ? g.id : null,
@@ -2863,7 +2922,8 @@ const zeileDialog = (z) => {
     <label class="dialog-feld">Zeile
       <input class="feld" data-zeilentext data-hinweis-quelle type="text" value="${esc(z ? z.text : '')}">
     </label>
-    ${katKaestchen(z ? z.kategorien : [])}`,
+    ${katKaestchen(z ? z.kategorien : [])}
+    ${z ? umzugFeld('zeilen', z.id) : ''}`,
   async () => {
     await post('/api/reime/zeile', {
       id: z ? z.id : null,
@@ -2890,7 +2950,8 @@ const textDialog = (t) => {
     <label class="dialog-feld">Text
       <textarea class="feld feld-hoch" data-inhalt data-hinweis-quelle rows="10">${esc(t ? t.zeilen.map((z) => z.text).join('\n') : '')}</textarea>
     </label>
-    ${katKaestchen(t ? t.kategorien : [])}`,
+    ${katKaestchen(t ? t.kategorien : [])}
+    ${t ? umzugFeld('texte', t.id) : ''}`,
   async () => {
     await post('/api/reime/text', {
       id: t ? t.id : null,
@@ -3459,6 +3520,11 @@ const rkatZeichnen = () => {
       <input class="feld feld-farbe" type="color" value="${esc(k.farbe)}" data-farbe>
       <input class="feld" type="text" value="${esc(k.name)}" data-name>
       <input class="feld" type="text" value="${esc(k.stichwoerter.join(', '))}" data-stich placeholder="Stichwörter">
+      <select class="feld" data-umzug title="Kategorie samt Einträgen in einen anderen Reiter verschieben">
+        <option value="">umziehen …</option>
+        ${Object.entries(BEREICH_NAMEN).filter(([b]) => b !== S.rkatBereich)
+    .map(([b, name]) => `<option value="${esc(b)}">nach ${esc(name)}</option>`).join('')}
+      </select>
       <button class="knopf knopf-still" data-speichern>Sichern</button>
       <button class="knopf knopf-gefahr" data-loeschen>Löschen</button>
     </div>`).join('')
@@ -3495,6 +3561,24 @@ $('#rkat-liste').addEventListener('click', fangen(async (e) => {
     return toast('Kategorie gelöscht');
   }
   return null;
+}));
+
+$('#rkat-liste').addEventListener('change', fangen(async (e) => {
+  const feld = e.target.closest('[data-umzug]');
+  if (!feld || !feld.value) return;
+  const zeileEl = feld.closest('[data-rkat]');
+  const name = zeileEl.querySelector('[data-name]').value;
+  const ziel = BEREICH_NAMEN[feld.value];
+  if (!confirm(`„${name}" samt allen Einträgen nach ${ziel} verschieben? `
+    + 'Reimgruppen werden dabei in einzelne Zeilen aufgeteilt.')) {
+    feld.value = '';
+    return;
+  }
+  const d = await post('/api/reime/kategorie/verschieben', {
+    von: S.rkatBereich, nach: feld.value, id: zeileEl.dataset.rkat
+  });
+  await einstellungenLaden();
+  toast(d.anzahl ? `${d.anzahl} ${d.anzahl === 1 ? 'Eintrag' : 'Einträge'} nach ${ziel} verschoben` : `Kategorie nach ${ziel} verschoben`);
 }));
 
 $('#rkat-anlegen').addEventListener('click', fangen(async () => {

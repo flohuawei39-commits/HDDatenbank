@@ -7,7 +7,7 @@
 <title>HDDatenbank</title>
 <!-- Das ?v= zwingt den Browser, nach einer Veroeffentlichung neu zu laden.
      Bei jeder Fassung mitziehen, zusammen mit lib/fassung.js. -->
-<link rel="stylesheet" href="./style.css?v=2026-08-31b">
+<link rel="stylesheet" href="./style.css?v=2026-08-31c">
 </head>
 <body>
 
@@ -212,7 +212,7 @@
         <div class="reihe" style="margin-top:8px">
           <label class="feld-mit-text">
             übersprungene Silben
-            <input id="such-budget" class="feld feld-schmal" type="number" min="0" max="20" step="1" value="0">
+            <input id="such-budget" data-enter="such-start" class="feld feld-schmal" type="number" min="0" max="20" step="1" value="0">
           </label>
           <label class="dialog-schalter">
             <input type="checkbox" id="such-ende"> Treffer muss auf der letzten Silbe enden
@@ -286,7 +286,7 @@
         </p>
         <div id="reiter-liste" class="kat-liste"></div>
         <div class="reihe">
-          <input id="reiter-name" class="feld" type="text" placeholder="Neuer eigener Reiter">
+          <input id="reiter-name" data-enter="reiter-anlegen" class="feld" type="text" placeholder="Neuer eigener Reiter">
           <button id="reiter-anlegen" class="knopf knopf-neon">Anlegen</button>
         </div>
       </section>
@@ -327,8 +327,8 @@
         </div>
         <div id="rkat-liste" class="kat-liste"></div>
         <div class="reihe">
-          <input id="rkat-name" class="feld" type="text" placeholder="Neue Kategorie">
-          <input id="rkat-stich" class="feld" type="text" placeholder="Stichwörter, mit Komma">
+          <input id="rkat-name" data-enter="rkat-anlegen" class="feld" type="text" placeholder="Neue Kategorie">
+          <input id="rkat-stich" data-enter="rkat-anlegen" class="feld" type="text" placeholder="Stichwörter, mit Komma">
           <input id="rkat-farbe" class="feld feld-farbe" type="color" value="#34e2e2">
           <button id="rkat-anlegen" class="knopf knopf-neon">Anlegen</button>
         </div>
@@ -348,11 +348,11 @@
         </p>
         <label class="dialog-schalter"><input type="checkbox" id="mail-aktiv"> Tagesmail verschicken</label>
         <div class="reihe" style="margin-top:10px">
-          <input id="mail-empfaenger" class="feld" type="email" placeholder="Empfänger" style="flex:1;min-width:220px">
-          <input id="mail-zeit" class="feld" type="time" value="07:00">
+          <input id="mail-empfaenger" data-enter="mail-sichern" class="feld" type="email" placeholder="Empfänger" style="flex:1;min-width:220px">
+          <input id="mail-zeit" data-enter="mail-sichern" class="feld" type="time" value="07:00">
         </div>
         <div class="reihe" style="margin-top:8px">
-          <input id="mail-schluessel" class="feld" type="password" placeholder="Web3Forms-Zugangsschlüssel" style="flex:1;min-width:220px">
+          <input id="mail-schluessel" data-enter="mail-sichern" class="feld" type="password" placeholder="Web3Forms-Zugangsschlüssel" style="flex:1;min-width:220px">
           <button id="mail-sichern" class="knopf knopf-neon">Sichern</button>
         </div>
         <div class="reihe" style="margin-top:8px">
@@ -371,7 +371,7 @@
         </p>
         <div id="kat-liste" class="kat-liste"></div>
         <div class="reihe">
-          <input id="kat-name" class="feld" type="text" placeholder="Neue Kategorie">
+          <input id="kat-name" data-enter="kat-anlegen" class="feld" type="text" placeholder="Neue Kategorie">
           <input id="kat-farbe" class="feld feld-farbe" type="color" value="#34e2e2">
           <button id="kat-anlegen" class="knopf knopf-neon">Anlegen</button>
         </div>
@@ -386,7 +386,7 @@
         </p>
         <div id="art-liste" class="kat-liste"></div>
         <div class="reihe">
-          <input id="art-name" class="feld" type="text" placeholder="Neue Art">
+          <input id="art-name" data-enter="art-anlegen" class="feld" type="text" placeholder="Neue Art">
           <input id="art-farbe" class="feld feld-farbe" type="color" value="#a988ff">
           <button id="art-anlegen" class="knopf knopf-neon">Anlegen</button>
         </div>
@@ -400,7 +400,7 @@
         </p>
         <div id="finkat-liste" class="kat-liste"></div>
         <div class="reihe">
-          <input id="finkat-name" class="feld" type="text" placeholder="Neue Finanzkategorie">
+          <input id="finkat-name" data-enter="finkat-anlegen" class="feld" type="text" placeholder="Neue Finanzkategorie">
           <input id="finkat-farbe" class="feld feld-farbe" type="color" value="#3ddc84">
           <button id="finkat-anlegen" class="knopf knopf-neon">Anlegen</button>
         </div>
@@ -439,16 +439,16 @@
           <strong>privat</strong> sein.
         </p>
         <div class="reihe">
-          <input id="ab-besitzer" class="feld" type="text" placeholder="GitHub-Kontoname" style="flex:1;min-width:180px">
-          <input id="ab-repo" class="feld" type="text" placeholder="Repository für die Daten" style="flex:1;min-width:180px">
+          <input id="ab-besitzer" data-enter="ab-sichern" class="feld" type="text" placeholder="GitHub-Kontoname" style="flex:1;min-width:180px">
+          <input id="ab-repo" data-enter="ab-sichern" class="feld" type="text" placeholder="Repository für die Daten" style="flex:1;min-width:180px">
         </div>
         <div class="reihe" style="margin-top:8px">
-          <input id="ab-token" class="feld" type="password" placeholder="Zugriffsschlüssel" style="flex:1;min-width:220px">
+          <input id="ab-token" data-enter="ab-sichern" class="feld" type="password" placeholder="Zugriffsschlüssel" style="flex:1;min-width:220px">
           <button id="ab-sichern" class="knopf knopf-neon">Verbinden</button>
           <button id="ab-loesen" class="knopf knopf-still versteckt">Lösen</button>
         </div>
         <div class="reihe" style="margin-top:8px">
-          <input id="ab-pin" class="feld" type="password" placeholder="Dein Passwort" autocomplete="current-password" style="flex:1;min-width:220px">
+          <input id="ab-pin" data-enter="ab-sichern" class="feld" type="password" placeholder="Dein Passwort" autocomplete="current-password" style="flex:1;min-width:220px">
           <span class="hinweis" style="flex:2;min-width:220px">Wird gebraucht, um vor dem ersten Schreiben nachzusehen,
             ob im Repository schon ein Bestand liegt — und ob er zu diesem Passwort gehört.</span>
         </div>
@@ -467,8 +467,8 @@
           Passwort sind die Daten verloren.
         </p>
         <div class="reihe">
-          <input id="pin-neu" class="feld" type="password" placeholder="neues Passwort" autocomplete="new-password">
-          <input id="pin-neu2" class="feld" type="password" placeholder="wiederholen" autocomplete="new-password">
+          <input id="pin-neu" data-enter="pin-aendern" class="feld" type="password" placeholder="neues Passwort" autocomplete="new-password">
+          <input id="pin-neu2" data-enter="pin-aendern" class="feld" type="password" placeholder="wiederholen" autocomplete="new-password">
           <button id="pin-aendern" class="knopf knopf-neon">Ändern</button>
         </div>
         <p id="pin-info" class="hinweis"></p>
@@ -505,6 +505,6 @@
 
 <div id="toast" class="toast versteckt"></div>
 
-<script type="module" src="./app.js?v=2026-08-31b"></script>
+<script type="module" src="./app.js?v=2026-08-31c"></script>
 </body>
 </html>

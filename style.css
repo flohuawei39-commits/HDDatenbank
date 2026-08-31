@@ -378,8 +378,19 @@ body.start-aktiv .app { padding-bottom: 16px; }
 /* ---------------------------------------------------------- Kategorien */
 
 .kat-liste { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
-.kat-zeile { display: flex; align-items: center; gap: 8px; }
-.kat-zeile .feld { flex: 1; }
+.kat-zeile { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Eine Grundbreite, ab der die Zeile lieber umbricht als die Felder auf
+   Fingerbreite zusammenzuquetschen — am Telefon stehen hier bis zu vier
+   Bedienelemente nebeneinander. */
+.kat-zeile .feld { flex: 1 1 140px; min-width: 140px; }
+/* Farbfeld und Umzugsfeld bringen ihre Breite mit: das eine ist ein Quadrat,
+   das andere traegt seine Beschriftung selbst. */
+.kat-zeile .feld-farbe, .kat-zeile .feld-schmal, .kat-zeile [data-umzug] {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: auto;
+}
+.kat-zeile .feld-farbe { width: 46px; }
 
 /* Klappt unter einem Auswahlfeld auf, wenn "+ neu …" gewaehlt wurde. */
 .neu-zeile { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }

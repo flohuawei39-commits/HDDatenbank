@@ -41,6 +41,16 @@ wiegt. Getroffen ist eine Silbe, sobald der Kern **oder** eine Anmerkung passt �
 Priorität entscheidet nur über Farbe und Rangfolge. Anmerkungen hängen am Wort und gelten
 damit überall.
 
+Ein Eintrag kann den Reiter wechseln: im Ändern-Fenster steht „Verschieben nach". Eine
+Gruppe zerfällt dabei in ihren Kopfbegriff und die Reime darunter, ein Text in seine
+Zeilen, eine Zeile wird zum Kopfbegriff einer neuen Gruppe. Kategorien wandern nur mit,
+wenn es sie im Zielreiter gibt. Unter Einstellungen › Kategorien zieht das Feld „umziehen"
+eine ganze Kategorie samt allem, was daran hängt, in einen anderen Reiter.
+
+Enter schickt ab: in jedem Fenster ist das „Speichern", in einer Zeile der Einstellungen
+ihr eigenes „Sichern", und die Felder unter einer Liste legen damit den neuen Eintrag an.
+Mehrzeilige Felder bleiben außen vor — dort ist Enter der Zeilenumbruch.
+
 Die **Silbensuche** nimmt bis zu zehn Silben in fester Reihenfolge. Die Zahl daneben sagt,
 wie viele fremde Silben dazwischen übersprungen werden dürfen; was vor oder hinter dem
 Muster steht, bleibt frei. Gesucht wird nur im Reime-Bestand.
