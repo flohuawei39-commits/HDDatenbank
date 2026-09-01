@@ -2677,20 +2677,38 @@ const REIME_TITEL = { reime: 'Reime', zeilen: 'Zeilen', texte: 'Texte' };
 
 const laut = (l) => (S.reimeDaten && S.reimeDaten.farben[l]) || 'var(--rand-hell)';
 
-/** Silbenzellen einer Zeile. Der Versatz wird als leere Zellen vorgesetzt. */
-const silbenRaster = (silben, versatz = 0, treffer = null) => {
-  const zellen = [];
-  for (let i = 0; i < versatz; i += 1) zellen.push('<span class="silbe silbe-leer"></span>');
+const leerZelle = '<span class="silbe silbe-leer"></span>';
 
+/**
+ * Silbenzellen einer Zeile. Der Versatz wird als leere Zellen vorgesetzt, der
+ * Wortschub als weitere Zellen vor dem betroffenen Wort — so laesst sich eine
+ * Zeile auch mittendrin auseinanderziehen.
+ *
+ * Die Zeile wird mitgegeben, damit das Silbenblatt weiss, welches Wort welcher
+ * Zeile es verschieben soll.
+ */
+const silbenRaster = (silben, versatz = 0, treffer = null, zeile = null) => {
+  const zellen = [];
+  const wortSchub = (zeile && zeile.wortSchub) || {};
+  for (let i = 0; i < versatz; i += 1) zellen.push(leerZelle);
+
+  let letztesWort = -1;
   silben.forEach((s, i) => {
-    const platz = S.silbenRegister.push(s) - 1;
+    if (s.wortIndex !== letztesWort) {
+      letztesWort = s.wortIndex;
+      for (let n = 0; n < (Number(wortSchub[s.wortIndex]) || 0); n += 1) zellen.push(leerZelle);
+    }
+    const platz = S.silbenRegister.push({ ...s, zeileId: zeile ? zeile.id : null }) - 1;
     const klassen = ['silbe'];
     if (s.wortAnfang && i > 0) klassen.push('silbe-wortanfang');
     if (s.anmerkungen.length) klassen.push('silbe-anmerkung');
     if (s.korrigiert) klassen.push('silbe-korrigiert');
+    // Was nicht mitzaehlt, bleibt stehen und bleibt lesbar, tritt aber zurueck.
+    if (s.zaehlt === false) klassen.push('silbe-still');
     if (treffer && treffer.includes(i)) klassen.push('silbe-treffer');
+    const wie = s.zaehlt === false ? ' — zählt nicht mit' : '';
     zellen.push(`<button type="button" class="${klassen.join(' ')}" style="--laut:${esc(laut(s.primaer))}"
-      data-silbe="${platz}" title="${esc(s.wort)} — ${s.silbeIndex + 1}. Silbe">${esc(s.primaer)}</button>`);
+      data-silbe="${platz}" title="${esc(s.wort)} — ${s.silbeIndex + 1}. Silbe${wie}">${esc(s.primaer)}</button>`);
   });
 
   return `<div class="silben-raster">${zellen.join('')}</div>`;
@@ -2716,9 +2734,10 @@ const reimZeile = (z, gruppe) => `
       ${schubPfeile(z)}
       <button class="reim-ausklapp" data-rat="${esc(z.text)}" data-rat-id="${esc(z.id)}"
         title="passende Reime aus dem Bestand">✓</button>
-      ${z.kopf ? '' : `<button class="reim-weg" data-reim-weg="${esc(z.id)}" title="Reim entfernen">✕</button>`}
+      ${z.kopf ? '' : `<button class="reim-weg" data-reim-aendern="${esc(z.id)}" title="Reim ändern">✎</button>
+      <button class="reim-weg" data-reim-weg="${esc(z.id)}" title="Reim entfernen">✕</button>`}
     </div>
-    ${silbenRaster(z.silben, z.versatz)}
+    ${silbenRaster(z.silben, z.versatz, null, z)}
     <div class="reim-rat versteckt"></div>
   </div>`;
 
@@ -2783,7 +2802,7 @@ const reimeZeichnen = () => {
               ${faerben ? schubPfeile(z) : ''}
               <button class="reim-weg" data-zeile-aendern="${esc(z.id)}" title="ändern">✎</button>
             </div>
-            ${faerben ? silbenRaster(z.silben, z.versatz) : ''}
+            ${faerben ? silbenRaster(z.silben, z.versatz, null, z) : ''}
           </div>`).join('')}
         </div>
       </section>`
@@ -2800,7 +2819,7 @@ const reimeZeichnen = () => {
       <div class="silben-lauf">${t.zeilen.map((z) => `
         <div class="reim-zeile">
           <div class="reim-kopfzeile"><span class="reim-text">${esc(z.text || ' ')}</span></div>
-          ${faerben && z.silben.length ? silbenRaster(z.silben, z.versatz) : ''}
+          ${faerben && z.silben.length ? silbenRaster(z.silben, z.versatz, null, z) : ''}
         </div>`).join('')}
       </div>
     </section>`).join('')
@@ -2883,12 +2902,19 @@ $('#dialog-inhalt').addEventListener('click', fangen(async (e) => {
   toast(`Nach ${ziel} verschoben`);
 }));
 
+/* Klammern gehoeren zum Text und werden mitgeschrieben — nur zur Zaehlung
+   melden sie sich ab. Der Hinweis steht ueberall dort, wo man sie tippt. */
+const KLAMMER_HINWEIS = `<p class="hinweis">Was in runden Klammern steht, wird gezeigt,
+  zählt aber nicht mit. Einzelne Silben lassen sich im Silbenblatt wieder dazunehmen
+  oder ganz streichen.</p>`;
+
 const gruppeDialog = (g) => {
   const vorhanden = Boolean(g);
   dialogOeffnen(vorhanden ? 'Reimgruppe ändern' : 'Neue Reimgruppe', `
     <label class="dialog-feld">Begriff
       <input class="feld" data-kopf data-hinweis-quelle type="text" value="${esc(g ? g.kopf : '')}" placeholder="zum Beispiel Hundesteuer">
     </label>
+    ${KLAMMER_HINWEIS}
     ${katKaestchen(g ? g.kategorien : [])}
     ${vorhanden ? umzugFeld('reime', g.id) : ''}`,
   async () => {
@@ -2915,6 +2941,7 @@ const reimDialog = (gruppeId, vorgabe) => {
     <label class="dialog-feld">Reim
       <input class="feld" data-reim type="text" value="${esc(vorgabe ? vorgabe.text : '')}" placeholder="Wort oder Wortfolge">
     </label>
+    ${KLAMMER_HINWEIS}
     <p class="hinweis">Mehrere Wörter sind ausdrücklich erlaubt — die Silben laufen über die Wortgrenze hinweg weiter.</p>`,
   async () => {
     await post('/api/reime/eintrag', {
@@ -2933,6 +2960,7 @@ const zeileDialog = (z) => {
     <label class="dialog-feld">Zeile
       <input class="feld" data-zeilentext data-hinweis-quelle type="text" value="${esc(z ? z.text : '')}">
     </label>
+    ${KLAMMER_HINWEIS}
     ${katKaestchen(z ? z.kategorien : [])}
     ${z ? umzugFeld('zeilen', z.id) : ''}`,
   async () => {
@@ -3004,6 +3032,36 @@ const silbeDialog = (s) => {
     </div>`;
   }).join('');
 
+  /* Die Zaehlweise steht am Wort und sticht damit die Klammer im Text. „Wie
+     geschrieben" heisst: die Klammer entscheidet. */
+  const zaehlWahl = `<select class="feld" data-zaehlung>
+      <option value="" ${!s.zaehlWeise || s.zaehlWeise === (s.klammer ? 'ohne' : 'mit') ? 'selected' : ''}>wie geschrieben${s.klammer ? ' — in Klammern, zählt nicht' : ''}</option>
+      <option value="mit">zählt mit</option>
+      <option value="ohne">zählt nicht, Platz bleibt</option>
+      <option value="weg">fällt ganz weg</option>
+    </select>`;
+
+  /* Gestrichene Silben desselben Wortes: hier ist der einzige Ort, an dem sie
+     wieder auftauchen — eine Zelle zum Anklicken haben sie ja nicht mehr. */
+  const zurueckHolen = (s.wortWeg || []).length
+    ? `<span class="dialog-feld">Gestrichene Silben in „${esc(s.wort)}"</span>
+       <div class="reihe">
+         ${s.wortWeg.map((w) => `<button type="button" class="reim-schub" style="width:auto;padding:0 8px"
+             data-zurueck="${w.silbeIndex}" title="wieder anzeigen">${esc(w.kern)} zurück</button>`).join(' ')}
+       </div>`
+    : '';
+
+  // Das erste Wort einer Zeile hat keine eigene Luecke: davor sitzt der
+  // Zeilenschub, und den bedienen die Pfeile in der Zeile selbst.
+  const wortSchieben = s.zeileId && s.wortIndex > 0
+    ? `<span class="dialog-feld">Dieses Wort im Raster verschieben</span>
+       <div class="reihe">
+         <button type="button" class="reim-schub" data-wort-schub="-1" title="eine Zelle nach links">‹</button>
+         <button type="button" class="reim-schub" data-wort-schub="1" title="eine Zelle nach rechts">›</button>
+         <span class="hinweis" style="margin:0">Schiebt dieses Wort und alles dahinter.</span>
+       </div>`
+    : '';
+
   dialogOeffnen(`Silbe „${s.primaer}" in „${s.wort}"`, `
     <p class="hinweis" style="margin-top:0">
       Gilt für das Wort, nicht nur für diese Zeile. Getroffen ist die Silbe, sobald der
@@ -3017,7 +3075,12 @@ const silbeDialog = (s) => {
     <span class="dialog-feld">Anmerkungen, höchstens drei</span>
     ${zeilen}
     <span class="dialog-feld">Was wiegt schwerer?</span>
-    ${wahlFeld('relevanz', [['buchstabe', 'der Buchstabe'], ['anmerkung', 'die Anmerkung']], s.relevanz)}`,
+    ${wahlFeld('relevanz', [['buchstabe', 'der Buchstabe'], ['anmerkung', 'die Anmerkung']], s.relevanz)}
+    <label class="dialog-feld">Zählt die Silbe mit?
+      ${zaehlWahl}
+    </label>
+    ${wortSchieben}
+    ${zurueckHolen}`,
   async () => {
     const inhalt = $('#dialog-inhalt');
     const anmerkungen = [0, 1, 2]
@@ -3032,12 +3095,52 @@ const silbeDialog = (s) => {
       silbeIndex: s.silbeIndex,
       korrektur: inhalt.querySelector('[data-korrektur]').value || null,
       relevanz: wahlWert('relevanz') || 'buchstabe',
+      zaehlung: inhalt.querySelector('[data-zaehlung]').value || null,
       anmerkungen
     });
     dialogSchliessen();
     await reimeLaden();
     toast('Silbe gesichert');
   }, null);
+
+  const inhalt = $('#dialog-inhalt');
+
+  /* Wer einen Klang anmerkt, meint ihn auch: die Anmerkung wiegt dann von
+     selbst schwerer. Wer das nicht will, stellt es danach zurueck. */
+  [0, 1, 2].forEach((i) => {
+    inhalt.querySelector(`[data-laut-${i}]`).addEventListener('change', (e) => {
+      if (!e.target.value) return;
+      const wahl = inhalt.querySelector('[data-wahl="relevanz"]');
+      [...wahl.querySelectorAll('[data-wert]')]
+        .forEach((b) => b.classList.toggle('aktiv', b.dataset.wert === 'anmerkung'));
+    });
+  });
+
+  inhalt.querySelectorAll('[data-zurueck]').forEach((knopf) => {
+    knopf.addEventListener('click', fangen(async () => {
+      await post('/api/reime/wort', {
+        wort: s.schluessel,
+        silbeIndex: Number(knopf.dataset.zurueck),
+        nurZaehlung: true,
+        zaehlung: null
+      });
+      dialogSchliessen();
+      await reimeLaden();
+      toast('Silbe wieder da');
+    }));
+  });
+
+  inhalt.querySelectorAll('[data-wort-schub]').forEach((knopf) => {
+    knopf.addEventListener('click', fangen(async () => {
+      await post('/api/reime/schub', {
+        id: s.zeileId,
+        wort: s.wortIndex,
+        schritt: Number(knopf.dataset.wortSchub)
+      });
+      dialogSchliessen();
+      await reimeLaden();
+    }));
+  });
 };
 
 /* ---- Bedienung der Reimeansicht ---------------------------------------- */
@@ -3090,6 +3193,13 @@ $('#reime-liste').addEventListener('click', fangen(async (e) => {
 
   if (e.target.closest('[data-gruppe-aendern]')) {
     return gruppeDialog(S.reimeDaten.gruppen.find((g) => g.id === gruppeId));
+  }
+
+  const reimAendern = e.target.closest('[data-reim-aendern]');
+  if (reimAendern) {
+    const gruppe = S.reimeDaten.gruppen.find((g) => g.id === gruppeId);
+    const zeile = gruppe && gruppe.zeilen.find((z) => z.id === reimAendern.dataset.reimAendern);
+    return reimDialog(gruppeId, zeile);
   }
 
   const weg = e.target.closest('[data-reim-weg]');

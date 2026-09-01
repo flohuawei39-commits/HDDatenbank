@@ -37,14 +37,34 @@ kommt ohne Wörterbuch aus — was daneben liegt, korrigierst du an der Silbe se
 
 Ein Klick auf eine Silbe öffnet ihre **Anmerkungen**: bis zu drei weitere Laute mit
 Priorität, dazu der Schalter, ob der geschriebene Buchstabe oder die Anmerkung schwerer
-wiegt. Getroffen ist eine Silbe, sobald der Kern **oder** eine Anmerkung passt — die
-Priorität entscheidet nur über Farbe und Rangfolge. Anmerkungen hängen am Wort und gelten
-damit überall.
+wiegt. Sobald ein Laut angemerkt wird, springt der Schalter von selbst auf „die Anmerkung" —
+wer das nicht will, stellt ihn zurück. Getroffen ist eine Silbe, sobald der Kern **oder**
+eine Anmerkung passt; die Priorität entscheidet nur über Farbe und Rangfolge. Anmerkungen
+hängen am Wort und gelten damit überall.
+
+Was in **runden Klammern** steht, gehört zur Aussage, aber nicht zur Zählung: es wird
+blasser gezeigt, behält seinen Platz und bleibt beim Zählen, Vergleichen und Suchen außen
+vor. Im Silbenblatt steht dafür „Zählt die Silbe mit?" mit drei Möglichkeiten neben der
+Vorgabe aus dem Text: *zählt mit* holt eine eingeklammerte Silbe zurück in die Zählung,
+*zählt nicht* nimmt eine freie heraus, *fällt ganz weg* streicht sie — für Silben, die man
+gar nicht spricht. Eine gestrichene Silbe verliert ihre Zelle und hinterlässt keine Lücke;
+zurück holt man sie über jede andere Silbe desselben Wortes. Die letzte Silbe eines Wortes
+lässt sich nicht streichen, sonst wäre das Wort nicht mehr anzuklicken. Zählt mitten in
+einer Klammer wieder etwas mit, bleibt zwischen den zählenden Silben eine Lücke stehen —
+so ist es gemeint, die Spalten sollen dadurch nicht zusammenrutschen.
 
 Stimmt die gerechnete Ausrichtung einmal nicht, schieben die Pfeile ‹ und › eine Zeile von
 Hand um je eine Silbenzelle — beliebig oft, ohne Grenze. Wandert eine Zeile über den linken
 Rand hinaus, rückt die Gruppe nach, statt sie abzuschneiden. Ein gesetzter Schub hängt an
-der Zeile und bringt den Knopf ⟲ mit, der die Rechnung wiederherstellt.
+der Zeile und bringt den Knopf ⟲ mit, der die Rechnung wiederherstellt. Innerhalb einer
+Zeile geht es auch: im Silbenblatt schieben die Pfeile unter „Dieses Wort im Raster
+verschieben" das Wort und alles dahinter um je eine Zelle nach rechts oder wieder zurück.
+
+Wird eine Gruppe breiter als der Bildschirm, erscheint unter ihr ein Schieber. Er gehört
+immer der ganzen Gruppe: alle Zeilen laufen gemeinsam, damit die Spalten untereinander
+stehen bleiben.
+
+Ein einzelner Reim lässt sich über ✎ ändern, ✕ entfernt ihn.
 
 Ein Eintrag kann den Reiter wechseln: im Ändern-Fenster steht „Verschieben nach". Eine
 Gruppe zerfällt dabei in ihren Kopfbegriff und die Reime darunter, ein Text in seine
