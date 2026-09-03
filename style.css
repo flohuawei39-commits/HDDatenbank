@@ -825,6 +825,8 @@ body.start-aktiv .app { padding-bottom: 16px; }
   cursor: pointer;
 }
 .kat-knopf:hover { color: var(--text); }
+/* Die Zahl am Knopf: wie viel im gerade offenen Reiter an der Kategorie haengt. */
+.kat-zahl { font-variant-numeric: tabular-nums; opacity: 0.6; margin-left: 2px; }
 .kat-knopf.aktiv { color: var(--text); border-color: var(--ton, var(--neon-cyan)); box-shadow: 0 0 10px -4px var(--ton, var(--neon-cyan)); }
 
 .silben-wahl { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -851,6 +853,12 @@ body.start-aktiv .app { padding-bottom: 16px; }
 
 .reim-zeile { padding: 8px 0; border-top: 1px solid var(--rand); min-width: max-content; }
 .reim-zeile:first-child { border-top: none; padding-top: 0; }
+
+/* In einem Text stehen die Zeilen dicht beieinander: dort will man die Strophe
+   im Ganzen sehen, nicht jede Zeile einzeln abgesetzt. */
+.reim-zeile-eng { padding: 2px 0; border-top: none; }
+.reim-zeile-eng .reim-kopfzeile { gap: 6px; margin-bottom: 2px; }
+.reim-zeile-eng .reim-schub { width: 20px; height: 20px; font-size: 11px; }
 .reim-zeile-kopf .reim-text { color: var(--text); font-weight: 600; }
 .reim-kopfzeile { display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px; }
 .reim-text { flex: 1; min-width: 0; }

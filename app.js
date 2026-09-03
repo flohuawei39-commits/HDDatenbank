@@ -49,7 +49,6 @@ const S = {
   reimeKategorie: null,
   reimeDaten: null,
   reimeEinst: null,
-  rkatBereich: 'reime',
   silbenRegister: [],
   eigenReiter: null,
   eigenDaten: null,
@@ -2723,6 +2722,13 @@ const schubPfeile = (z) => `
   ${z.schub ? `<button class="reim-schub" data-schub="0" data-schub-id="${esc(z.id)}"
       title="Verschiebung zurücknehmen">⟲</button>` : ''}`;
 
+/* Reihenfolge von Hand. Steht ein Kategoriefilter, springt der Schritt ueber
+   alles hinweg, was gerade nicht dasteht — sonst sieht es aus, als bewege sich
+   nichts, weil der Nachbar unsichtbar ist. */
+const ordnenPfeile = (id, was) => `
+  <button class="reim-schub" data-ordnen="-1" data-ordnen-id="${esc(id)}" title="${esc(was)} nach oben">↑</button>
+  <button class="reim-schub" data-ordnen="1" data-ordnen-id="${esc(id)}" title="${esc(was)} nach unten">↓</button>`;
+
 const zaehlerMarke = (z) => `<span class="reim-zaehler" title="passende Silben nach oben und nach unten, dann Silben insgesamt">
   ↑${z.zaehlung.oben} ↓${z.zaehlung.unten} · ${z.zaehlung.gesamt}</span>`;
 
@@ -2734,7 +2740,8 @@ const reimZeile = (z, gruppe) => `
       ${schubPfeile(z)}
       <button class="reim-ausklapp" data-rat="${esc(z.text)}" data-rat-id="${esc(z.id)}"
         title="passende Reime aus dem Bestand">✓</button>
-      ${z.kopf ? '' : `<button class="reim-weg" data-reim-aendern="${esc(z.id)}" title="Reim ändern">✎</button>
+      ${z.kopf ? '' : `${ordnenPfeile(z.id, 'Reim')}
+      <button class="reim-weg" data-reim-aendern="${esc(z.id)}" title="Reim ändern">✎</button>
       <button class="reim-weg" data-reim-weg="${esc(z.id)}" title="Reim entfernen">✕</button>`}
     </div>
     ${silbenRaster(z.silben, z.versatz, null, z)}
@@ -2747,11 +2754,24 @@ const katMarken = (ids) => (ids || [])
   .map((k) => `<span class="zeile-marke zeile-marke-neon" style="--ton:${esc(k.farbe)}">${esc(k.name)}</span>`)
   .join(' ');
 
+/**
+ * Die Kategorienleiste. Sie ist in allen drei Reitern dieselbe: eine Kategorie
+ * gilt fuer Reime, Zeilen und Texte zugleich. Die Zahl am Knopf sagt, wie viel
+ * im gerade offenen Reiter darunter liegt, der Titel sagt es fuer alle drei.
+ */
 const reimeKategorienZeichnen = () => {
-  const knopf = (id, name, farbe) => `<button type="button" class="kat-knopf${(S.reimeKategorie || '') === id ? ' aktiv' : ''}"
-    data-rkat-wahl="${esc(id)}" style="--ton:${esc(farbe)}">${esc(name)}</button>`;
+  const bereich = S.reimeDaten.bereich;
+  const knopf = (id, name, farbe, zusatz = '', titel = '') => `<button type="button"
+    class="kat-knopf${(S.reimeKategorie || '') === id ? ' aktiv' : ''}"
+    data-rkat-wahl="${esc(id)}" style="--ton:${esc(farbe)}"
+    title="${esc(titel)}">${esc(name)}${zusatz}</button>`;
+
   $('#reime-kategorien').innerHTML = knopf('', 'Alles', 'var(--rand-hell)')
-    + (S.reimeDaten.kategorien || []).map((k) => knopf(k.id, k.name, k.farbe)).join('');
+    + (S.reimeDaten.kategorien || []).map((k) => {
+      const a = k.anzahl || { reime: 0, zeilen: 0, texte: 0 };
+      return knopf(k.id, k.name, k.farbe, ` <span class="kat-zahl">${a[bereich]}</span>`,
+        `${a.reime} Reime · ${a.zeilen} Zeilen · ${a.texte} Texte`);
+    }).join('');
 };
 
 const reimeZeichnen = () => {
@@ -2780,6 +2800,7 @@ const reimeZeichnen = () => {
         <h2 class="block-titel">
           ${esc(g.kopf)} ${katMarken(g.kategorien)}
           <span class="kachel-wahl">
+            ${ordnenPfeile(g.id, 'Gruppe')}
             <button type="button" data-gruppe-reim>+ Reim</button>
             <button type="button" data-gruppe-sortieren title="besten Reim nach oben">Sortieren</button>
             <button type="button" data-gruppe-aendern>Ändern</button>
@@ -2799,6 +2820,7 @@ const reimeZeichnen = () => {
             <div class="reim-kopfzeile">
               <span class="reim-text">${esc(z.text)}</span>
               ${katMarken(z.kategorien)}
+              ${ordnenPfeile(z.id, 'Zeile')}
               ${faerben ? schubPfeile(z) : ''}
               <button class="reim-weg" data-zeile-aendern="${esc(z.id)}" title="ändern">✎</button>
             </div>
@@ -2814,11 +2836,18 @@ const reimeZeichnen = () => {
     <section class="block" data-text="${esc(t.id)}">
       <h2 class="block-titel">
         ${esc(t.titel)} ${katMarken(t.kategorien)}
-        <span class="kachel-wahl"><button type="button" data-text-aendern="${esc(t.id)}">Ändern</button></span>
+        <span class="kachel-wahl">
+          ${ordnenPfeile(t.id, 'Text')}
+          <button type="button" data-text-aendern="${esc(t.id)}">Ändern</button>
+        </span>
       </h2>
       <div class="silben-lauf">${t.zeilen.map((z) => `
-        <div class="reim-zeile">
-          <div class="reim-kopfzeile"><span class="reim-text">${esc(z.text || ' ')}</span></div>
+        <div class="reim-zeile reim-zeile-eng">
+          <div class="reim-kopfzeile">
+            <span class="reim-text">${esc(z.text || ' ')}</span>
+            ${ordnenPfeile(z.id, 'Zeile')}
+            ${faerben && z.silben.length ? schubPfeile(z) : ''}
+          </div>
           ${faerben && z.silben.length ? silbenRaster(z.silben, z.versatz, null, z) : ''}
         </div>`).join('')}
       </div>
@@ -3149,7 +3178,7 @@ $('#reime-bereiche').addEventListener('click', fangen(async (e) => {
   const knopf = e.target.closest('[data-bereich]');
   if (!knopf) return;
   S.reimeBereich = knopf.dataset.bereich;
-  S.reimeKategorie = null;
+  // Die Kategorie gilt ueberall — beim Reiterwechsel bleibt sie deshalb stehen.
   await reimeLaden();
 }));
 
@@ -3179,6 +3208,16 @@ $('#reime-such-auf').addEventListener('click', () => {
 $('#reime-liste').addEventListener('click', fangen(async (e) => {
   const silbe = e.target.closest('[data-silbe]');
   if (silbe) return silbeDialog(S.silbenRegister[Number(silbe.dataset.silbe)]);
+
+  const ordnen = e.target.closest('[data-ordnen]');
+  if (ordnen) {
+    await post('/api/reime/ordnen', {
+      id: ordnen.dataset.ordnenId,
+      schritt: Number(ordnen.dataset.ordnen),
+      kategorie: S.reimeKategorie
+    });
+    return reimeLaden();
+  }
 
   const gruppeEl = e.target.closest('[data-gruppe]');
   const gruppeId = gruppeEl ? gruppeEl.dataset.gruppe : null;
@@ -3642,33 +3681,31 @@ $('#reime-faerben-texte').addEventListener('change', fangen(async (e) => {
   await post('/api/reime/anzeige', { faerbenTexte: e.target.checked });
 }));
 
+/* Eine Kategorie gilt in allen drei Reitern. Der Umzug bewegt deshalb nicht
+   mehr die Kategorie, sondern ihre Eintraege von einem Reiter in den anderen —
+   darum steht in der Auswahl beides, woher und wohin. */
+const UMZUG_WEGE = Object.entries(BEREICH_NAMEN).flatMap(([von, vonName]) => Object.entries(BEREICH_NAMEN)
+  .filter(([nach]) => nach !== von)
+  .map(([nach, nachName]) => [`${von}>${nach}`, `${vonName} → ${nachName}`]));
+
 const rkatZeichnen = () => {
   const r = S.reimeEinst;
   if (!r) return;
-  $$('#rkat-bereiche [data-bereich]').forEach((b) => b.classList.toggle('aktiv', b.dataset.bereich === S.rkatBereich));
-  const liste = r.kategorien[S.rkatBereich] || [];
+  const liste = r.kategorien || [];
   $('#rkat-liste').innerHTML = liste.length ? liste.map((k) => `
     <div class="kat-zeile" data-rkat="${esc(k.id)}">
       <input class="feld feld-farbe" type="color" value="${esc(k.farbe)}" data-farbe>
       <input class="feld" type="text" value="${esc(k.name)}" data-name>
       <input class="feld" type="text" value="${esc(k.stichwoerter.join(', '))}" data-stich placeholder="Stichwörter">
-      <select class="feld" data-umzug title="Kategorie samt Einträgen in einen anderen Reiter verschieben">
-        <option value="">umziehen …</option>
-        ${Object.entries(BEREICH_NAMEN).filter(([b]) => b !== S.rkatBereich)
-    .map(([b, name]) => `<option value="${esc(b)}">nach ${esc(name)}</option>`).join('')}
+      <select class="feld" data-umzug title="Einträge dieser Kategorie in einen anderen Reiter verschieben">
+        <option value="">Einträge umziehen …</option>
+        ${UMZUG_WEGE.map(([wert, name]) => `<option value="${esc(wert)}">${esc(name)}</option>`).join('')}
       </select>
       <button class="knopf knopf-still" data-speichern>Sichern</button>
       <button class="knopf knopf-gefahr" data-loeschen>Löschen</button>
     </div>`).join('')
-    : leer('Noch keine Kategorie in diesem Reiter.');
+    : leer('Noch keine Kategorie.');
 };
-
-$('#rkat-bereiche').addEventListener('click', (e) => {
-  const knopf = e.target.closest('[data-bereich]');
-  if (!knopf) return;
-  S.rkatBereich = knopf.dataset.bereich;
-  rkatZeichnen();
-});
 
 $('#rkat-liste').addEventListener('click', fangen(async (e) => {
   const zeileEl = e.target.closest('[data-rkat]');
@@ -3678,7 +3715,6 @@ $('#rkat-liste').addEventListener('click', fangen(async (e) => {
   if (e.target.closest('[data-speichern]')) {
     await post('/api/reime/kategorie', {
       id,
-      bereich: S.rkatBereich,
       name: zeileEl.querySelector('[data-name]').value,
       farbe: zeileEl.querySelector('[data-farbe]').value,
       stichwoerter: zeileEl.querySelector('[data-stich]').value.split(',')
@@ -3688,7 +3724,7 @@ $('#rkat-liste').addEventListener('click', fangen(async (e) => {
   }
 
   if (e.target.closest('[data-loeschen]')) {
-    await del(`/api/reime/kategorie?bereich=${S.rkatBereich}&id=${encodeURIComponent(id)}`);
+    await del(`/api/reime/kategorie?id=${encodeURIComponent(id)}`);
     await einstellungenLaden();
     return toast('Kategorie gelöscht');
   }
@@ -3700,24 +3736,22 @@ $('#rkat-liste').addEventListener('change', fangen(async (e) => {
   if (!feld || !feld.value) return;
   const zeileEl = feld.closest('[data-rkat]');
   const name = zeileEl.querySelector('[data-name]').value;
-  const ziel = BEREICH_NAMEN[feld.value];
-  if (!confirm(`„${name}" samt allen Einträgen nach ${ziel} verschieben? `
+  const [von, nach] = feld.value.split('>');
+  const ziel = BEREICH_NAMEN[nach];
+  if (!confirm(`Alle ${BEREICH_NAMEN[von]} der Kategorie „${name}" nach ${ziel} verschieben? `
     + 'Reimgruppen werden dabei in einzelne Zeilen aufgeteilt.')) {
     feld.value = '';
     return;
   }
-  const d = await post('/api/reime/kategorie/verschieben', {
-    von: S.rkatBereich, nach: feld.value, id: zeileEl.dataset.rkat
-  });
+  const d = await post('/api/reime/kategorie/verschieben', { von, nach, id: zeileEl.dataset.rkat });
   await einstellungenLaden();
-  toast(d.anzahl ? `${d.anzahl} ${d.anzahl === 1 ? 'Eintrag' : 'Einträge'} nach ${ziel} verschoben` : `Kategorie nach ${ziel} verschoben`);
+  toast(d.anzahl ? `${d.anzahl} ${d.anzahl === 1 ? 'Eintrag' : 'Einträge'} nach ${ziel} verschoben` : 'Dort lag nichts');
 }));
 
 $('#rkat-anlegen').addEventListener('click', fangen(async () => {
   const name = $('#rkat-name').value.trim();
   if (!name) throw new Error('Name fehlt.');
   await post('/api/reime/kategorie', {
-    bereich: S.rkatBereich,
     name,
     farbe: $('#rkat-farbe').value,
     stichwoerter: $('#rkat-stich').value.split(',')

@@ -7,7 +7,7 @@
 <title>HDDatenbank</title>
 <!-- Das ?v= zwingt den Browser, nach einer Veroeffentlichung neu zu laden.
      Bei jeder Fassung mitziehen, zusammen mit lib/fassung.js. -->
-<link rel="stylesheet" href="./style.css?v=2026-09-01">
+<link rel="stylesheet" href="./style.css?v=2026-09-03">
 </head>
 <body>
 
@@ -314,17 +314,13 @@
       </section>
 
       <section class="block">
-        <h2 class="block-titel">Kategorien <span class="block-neben">Reime, Zeilen, Texte</span></h2>
+        <h2 class="block-titel">Kategorien <span class="block-neben">gelten in allen drei Reitern</span></h2>
         <p class="hinweis" style="margin-top:0">
-          Jeder der drei Reiter hat seine eigene Liste. Stichwörter sind der Haken, an dem
-          der Hinweis „passt vielleicht zu …" beim Schreiben hängt — kommagetrennt eintragen.
-          Löschen geht nur, solange nichts daran hängt.
+          Eine Liste für alle drei Reiter: jede Kategorie steht in Reimen, Zeilen und Texten
+          zur Auswahl, und ein Klick auf sie zeigt, was dort darunter liegt. Stichwörter sind
+          der Haken, an dem der Hinweis „passt vielleicht zu …" beim Schreiben hängt —
+          kommagetrennt eintragen. Löschen geht nur, solange nichts daran hängt.
         </p>
-        <div class="wahl" id="rkat-bereiche">
-          <button type="button" data-bereich="reime" class="aktiv">Reime</button>
-          <button type="button" data-bereich="zeilen">Zeilen</button>
-          <button type="button" data-bereich="texte">Texte</button>
-        </div>
         <div id="rkat-liste" class="kat-liste"></div>
         <div class="reihe">
           <input id="rkat-name" data-enter="rkat-anlegen" class="feld" type="text" placeholder="Neue Kategorie">
@@ -513,30 +509,30 @@
 <script type="importmap">
   {
     "imports": {
-      "./lib/banken.js": "./lib/banken.js?v=2026-09-01",
-      "./lib/datum.js": "./lib/datum.js?v=2026-09-01",
-      "./lib/eigene.js": "./lib/eigene.js?v=2026-09-01",
-      "./lib/fassung.js": "./lib/fassung.js?v=2026-09-01",
-      "./lib/finanzen.js": "./lib/finanzen.js?v=2026-09-01",
-      "./lib/gemeinden.js": "./lib/gemeinden.js?v=2026-09-01",
-      "./lib/github.js": "./lib/github.js?v=2026-09-01",
-      "./lib/krypto.js": "./lib/krypto.js?v=2026-09-01",
-      "./lib/mail.js": "./lib/mail.js?v=2026-09-01",
-      "./lib/pdf.js": "./lib/pdf.js?v=2026-09-01",
-      "./lib/quickparse.js": "./lib/quickparse.js?v=2026-09-01",
-      "./lib/recurrence.js": "./lib/recurrence.js?v=2026-09-01",
-      "./lib/reime.js": "./lib/reime.js?v=2026-09-01",
-      "./lib/reimedaten.js": "./lib/reimedaten.js?v=2026-09-01",
-      "./lib/routen.js": "./lib/routen.js?v=2026-09-01",
-      "./lib/search.js": "./lib/search.js?v=2026-09-01",
-      "./lib/sha256.js": "./lib/sha256.js?v=2026-09-01",
-      "./lib/silben.js": "./lib/silben.js?v=2026-09-01",
-      "./lib/spiegel.js": "./lib/spiegel.js?v=2026-09-01",
-      "./lib/store.js": "./lib/store.js?v=2026-09-01",
-      "./lib/sync.js": "./lib/sync.js?v=2026-09-01"
+      "./lib/banken.js": "./lib/banken.js?v=2026-09-03",
+      "./lib/datum.js": "./lib/datum.js?v=2026-09-03",
+      "./lib/eigene.js": "./lib/eigene.js?v=2026-09-03",
+      "./lib/fassung.js": "./lib/fassung.js?v=2026-09-03",
+      "./lib/finanzen.js": "./lib/finanzen.js?v=2026-09-03",
+      "./lib/gemeinden.js": "./lib/gemeinden.js?v=2026-09-03",
+      "./lib/github.js": "./lib/github.js?v=2026-09-03",
+      "./lib/krypto.js": "./lib/krypto.js?v=2026-09-03",
+      "./lib/mail.js": "./lib/mail.js?v=2026-09-03",
+      "./lib/pdf.js": "./lib/pdf.js?v=2026-09-03",
+      "./lib/quickparse.js": "./lib/quickparse.js?v=2026-09-03",
+      "./lib/recurrence.js": "./lib/recurrence.js?v=2026-09-03",
+      "./lib/reime.js": "./lib/reime.js?v=2026-09-03",
+      "./lib/reimedaten.js": "./lib/reimedaten.js?v=2026-09-03",
+      "./lib/routen.js": "./lib/routen.js?v=2026-09-03",
+      "./lib/search.js": "./lib/search.js?v=2026-09-03",
+      "./lib/sha256.js": "./lib/sha256.js?v=2026-09-03",
+      "./lib/silben.js": "./lib/silben.js?v=2026-09-03",
+      "./lib/spiegel.js": "./lib/spiegel.js?v=2026-09-03",
+      "./lib/store.js": "./lib/store.js?v=2026-09-03",
+      "./lib/sync.js": "./lib/sync.js?v=2026-09-03"
     }
   }
 </script>
-<script type="module" src="./app.js?v=2026-09-01"></script>
+<script type="module" src="./app.js?v=2026-09-03"></script>
 </body>
 </html>

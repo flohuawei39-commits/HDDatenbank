@@ -64,13 +64,31 @@ Wird eine Gruppe breiter als der Bildschirm, erscheint unter ihr ein Schieber. E
 immer der ganzen Gruppe: alle Zeilen laufen gemeinsam, damit die Spalten untereinander
 stehen bleiben.
 
+In einem Text stehen die Zeilen dicht beieinander, damit die Strophe als Ganzes zu lesen
+ist. Die Pfeile ‹ und › gibt es auch dort — sie schieben eine Textzeile genauso wie eine
+Reimzeile, sobald „Silben färben und ausrichten" an ist. Was von Hand geschoben wurde,
+überlebt das Ändern des Textes: eine Zeile, die an ihrer Stelle unverändert stehen bleibt,
+behält ihre Verschiebung; nur eine wirklich geänderte Zeile fängt neu an.
+
+Die Pfeile ↑ und ↓ setzen die **Reihenfolge** von Hand: Gruppen, einzelne Reime, Zeilen,
+Texte und die Zeilen innerhalb eines Textes. Steht ein Kategoriefilter, springt der Schritt
+über alles hinweg, was gerade nicht dasteht — sonst sähe es aus, als bewege sich nichts.
+
 Ein einzelner Reim lässt sich über ✎ ändern, ✕ entfernt ihn.
+
+**Kategorien** gelten in allen drei Reitern: eine Liste, überall dieselbe Leiste. Die Zahl
+am Knopf sagt, wie viel im offenen Reiter darunter liegt, der Tooltip sagt es für alle
+drei. Ein Klick zeigt, was dazugehört, und die Wahl bleibt beim Wechsel des Reiters stehen.
+Angelegt und gepflegt werden sie unter Einstellungen › Kategorien; Stichwörter sind der
+Haken für den Hinweis „passt vielleicht zu …". Löschen geht nur, solange nichts daran hängt
+— in keinem der drei Reiter.
 
 Ein Eintrag kann den Reiter wechseln: im Ändern-Fenster steht „Verschieben nach". Eine
 Gruppe zerfällt dabei in ihren Kopfbegriff und die Reime darunter, ein Text in seine
-Zeilen, eine Zeile wird zum Kopfbegriff einer neuen Gruppe. Kategorien wandern nur mit,
-wenn es sie im Zielreiter gibt. Unter Einstellungen › Kategorien zieht das Feld „umziehen"
-eine ganze Kategorie samt allem, was daran hängt, in einen anderen Reiter.
+Zeilen, eine Zeile wird zum Kopfbegriff einer neuen Gruppe. Die Kategorie kommt mit, sie
+gilt ja überall. Unter Einstellungen › Kategorien schiebt das Feld „Einträge umziehen"
+alles, was an einer Kategorie hängt, von einem Reiter in einen anderen — die Kategorie
+selbst bleibt stehen.
 
 Enter schickt ab: in jedem Fenster ist das „Speichern", in einer Zeile der Einstellungen
 ihr eigenes „Sichern", und die Felder unter einer Liste legen damit den neuen Eintrag an.
