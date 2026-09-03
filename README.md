@@ -79,7 +79,10 @@ Ein einzelner Reim lässt sich über ✎ ändern, ✕ entfernt ihn.
 **Kategorien** gelten in allen drei Reitern: eine Liste, überall dieselbe Leiste. Die Zahl
 am Knopf sagt, wie viel im offenen Reiter darunter liegt, der Tooltip sagt es für alle
 drei. Ein Klick zeigt, was dazugehört, und die Wahl bleibt beim Wechsel des Reiters stehen.
-Angelegt und gepflegt werden sie unter Einstellungen › Kategorien; Stichwörter sind der
+Einsortiert wird ohne Umweg: „Kategorien" an einer Gruppe oder einem Text, # an einer
+Zeile öffnet nur den Kasten mit den Kategorien — das ist der schnelle Weg, bestehende
+Einträge nachträglich einzuordnen. Im Ändern-Fenster steht derselbe Kasten weiterhin.
+Angelegt und gepflegt werden die Kategorien unter Einstellungen › Kategorien; Stichwörter sind der
 Haken für den Hinweis „passt vielleicht zu …". Löschen geht nur, solange nichts daran hängt
 — in keinem der drei Reiter.
 

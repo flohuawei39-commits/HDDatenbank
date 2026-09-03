@@ -2803,6 +2803,7 @@ const reimeZeichnen = () => {
             ${ordnenPfeile(g.id, 'Gruppe')}
             <button type="button" data-gruppe-reim>+ Reim</button>
             <button type="button" data-gruppe-sortieren title="besten Reim nach oben">Sortieren</button>
+            <button type="button" data-kat-zu="${esc(g.id)}" title="in Kategorien einsortieren">Kategorien</button>
             <button type="button" data-gruppe-aendern>Ändern</button>
           </span>
         </h2>
@@ -2822,6 +2823,7 @@ const reimeZeichnen = () => {
               ${katMarken(z.kategorien)}
               ${ordnenPfeile(z.id, 'Zeile')}
               ${faerben ? schubPfeile(z) : ''}
+              <button class="reim-weg" data-kat-zu="${esc(z.id)}" title="in Kategorien einsortieren">#</button>
               <button class="reim-weg" data-zeile-aendern="${esc(z.id)}" title="ändern">✎</button>
             </div>
             ${faerben ? silbenRaster(z.silben, z.versatz, null, z) : ''}
@@ -2838,6 +2840,7 @@ const reimeZeichnen = () => {
         ${esc(t.titel)} ${katMarken(t.kategorien)}
         <span class="kachel-wahl">
           ${ordnenPfeile(t.id, 'Text')}
+          <button type="button" data-kat-zu="${esc(t.id)}" title="in Kategorien einsortieren">Kategorien</button>
           <button type="button" data-text-aendern="${esc(t.id)}">Ändern</button>
         </span>
       </h2>
@@ -2883,6 +2886,34 @@ const katKaestchen = (gewaehlt = []) => `
       </label>`).join('') || '<span class="hinweis">Noch keine Kategorien — anzulegen in den Einstellungen.</span>'}
   </div>
   <p class="hinweis" data-kat-hinweis></p>`;
+
+/**
+ * Bestehendes einsortieren, ohne den Umweg ueber das Aendern-Fenster: derselbe
+ * Kasten mit den Kategorien, sonst nichts. Gespeichert wird ueber die normale
+ * Route des jeweiligen Reiters — deshalb geht der eigene Inhalt unveraendert
+ * mit, sonst wuerde er beim Sichern verlorengehen.
+ */
+const katDialog = (bereich, eintrag) => {
+  const name = bereich === 'reime' ? eintrag.kopf : (bereich === 'zeilen' ? eintrag.text : eintrag.titel);
+  dialogOeffnen(`Kategorien für „${name}"`, katKaestchen(eintrag.kategorien), async () => {
+    const kategorien = katGewaehlt();
+    if (bereich === 'reime') {
+      await post('/api/reime/gruppe', { id: eintrag.id, kopf: eintrag.kopf, kategorien });
+    } else if (bereich === 'zeilen') {
+      await post('/api/reime/zeile', { id: eintrag.id, text: eintrag.text, kategorien });
+    } else {
+      await post('/api/reime/text', {
+        id: eintrag.id,
+        titel: eintrag.titel,
+        inhalt: eintrag.zeilen.map((z) => z.text).join('\n'),
+        kategorien
+      });
+    }
+    dialogSchliessen();
+    await reimeLaden();
+    toast('Einsortiert');
+  }, null);
+};
 
 const katGewaehlt = () => [...$('#dialog-inhalt').querySelectorAll('[data-kat]')]
   .filter((f) => f.checked).map((f) => f.dataset.kat);
@@ -3217,6 +3248,16 @@ $('#reime-liste').addEventListener('click', fangen(async (e) => {
       kategorie: S.reimeKategorie
     });
     return reimeLaden();
+  }
+
+  const katZu = e.target.closest('[data-kat-zu]');
+  if (katZu) {
+    const d = S.reimeDaten;
+    const id = katZu.dataset.katZu;
+    const eintrag = d.bereich === 'reime'
+      ? d.gruppen.find((g) => g.id === id)
+      : (d.bereich === 'zeilen' ? d.zeilen.find((z) => z.id === id) : d.texte.find((t) => t.id === id));
+    return eintrag ? katDialog(d.bereich, eintrag) : null;
   }
 
   const gruppeEl = e.target.closest('[data-gruppe]');
