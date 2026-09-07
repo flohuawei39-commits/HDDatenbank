@@ -53,12 +53,15 @@ lässt sich nicht streichen, sonst wäre das Wort nicht mehr anzuklicken. Zählt
 einer Klammer wieder etwas mit, bleibt zwischen den zählenden Silben eine Lücke stehen —
 so ist es gemeint, die Spalten sollen dadurch nicht zusammenrutschen.
 
-Neu geschriebene und geänderte Zeilen richten sich **an der letzten Silbe** aus: die letzte
-Silbe steht unter der letzten Silbe der Zeile darüber. Gemessen wird an der letzten
-mitzählenden Silbe — was in Klammern hinterherläuft, verschiebt den Reim nicht, und eine
-Leerzeile bleibt außen vor. Was vorher schon dastand, behält seine bisherige Ausrichtung am
-längsten gemeinsamen Stück; erst wenn du eine solche Zeile änderst, gilt auch für sie die
-neue Regel.
+Ausgerichtet wird **an der letzten Silbe**: die letzte Silbe einer Zeile steht unter der
+letzten der Zeile darüber und über der letzten der Zeile darunter — in Reimen, Zeilen und
+Texten, ohne Ausnahme und ohne Rücksicht darauf, wann die Zeile geschrieben wurde. Gemeint
+ist die letzte Silbe, die für den Reim gilt: was in Klammern hinterherläuft oder gestrichen
+ist, zählt dafür nicht. Eine Leerzeile im Text bleibt außen vor.
+
+Der ganze Block rückt anschließend so weit nach links, dass die längste Zeile bei null
+anfängt — gezählt mit allem, was sie zeigt, auch dem Eingeklammerten. Sonst stünde vor der
+Gruppe eine Wand aus leeren Zellen.
 
 Stimmt die gerechnete Ausrichtung einmal nicht, schieben die Pfeile ‹ und › eine Zeile von
 Hand um je eine Silbenzelle — beliebig oft, ohne Grenze. Wandert eine Zeile über den linken
