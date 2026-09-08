@@ -2814,19 +2814,25 @@ const reimeZeichnen = () => {
   }
 
   if (d.bereich === 'zeilen') {
+    /* Ein Eintrag kann ein Absatz sein. Dann steht erst der ganze Text, und
+       darunter stehen die Silbenreihen gesammelt — nicht zwischen den Zeilen,
+       sonst liest sich der Absatz nicht mehr am Stueck. */
     ziel.innerHTML = d.zeilen.length ? `
       <section class="block">
         <div class="silben-lauf">${d.zeilen.map((z) => `
           <div class="reim-zeile" data-zeile="${esc(z.id)}" data-typ="zeile">
             <div class="reim-kopfzeile">
-              <span class="reim-text">${esc(z.text)}</span>
+              <span class="reim-text">${z.teile.map((t) => esc(t.text) || '&nbsp;').join('<br>')}</span>
               ${katMarken(z.kategorien)}
               ${ordnenPfeile(z.id, 'Zeile')}
-              ${faerben ? schubPfeile(z) : ''}
               <button class="reim-weg" data-kat-zu="${esc(z.id)}" title="in Kategorien einsortieren">#</button>
               <button class="reim-weg" data-zeile-aendern="${esc(z.id)}" title="ändern">✎</button>
             </div>
-            ${faerben ? silbenRaster(z.silben, z.versatz, null, z) : ''}
+            ${faerben ? z.teile.filter((t) => t.silben.length).map((t) => `
+              <div class="silben-reihe">
+                <span class="silben-fuehrung">${schubPfeile(t)}</span>
+                ${silbenRaster(t.silben, t.versatz, null, t)}
+              </div>`).join('') : ''}
           </div>`).join('')}
         </div>
       </section>`
@@ -2900,7 +2906,8 @@ const katDialog = (bereich, eintrag) => {
     if (bereich === 'reime') {
       await post('/api/reime/gruppe', { id: eintrag.id, kopf: eintrag.kopf, kategorien });
     } else if (bereich === 'zeilen') {
-      await post('/api/reime/zeile', { id: eintrag.id, text: eintrag.text, kategorien });
+      // Der ganze Absatz muss mit, sonst blieben beim Sichern die weiteren Zeilen weg.
+      await post('/api/reime/zeile', { id: eintrag.id, text: eintrag.inhalt || eintrag.text, kategorien });
     } else {
       await post('/api/reime/text', {
         id: eintrag.id,
@@ -2931,35 +2938,37 @@ $('#dialog-inhalt').addEventListener('input', (e) => {
 
 /* ---- Dialoge ----------------------------------------------------------- */
 
-/* ---- Umzug zwischen den Reitern --------------------------------------------
+/* ---- Abschrift in einen anderen Reiter --------------------------------------
 
    Dieselbe Zeile kann heute ein Reim und morgen eine Punchline sein. Statt sie
-   abzuschreiben, wandert der Eintrag mitsamt seiner Kategorie hinueber; eine
-   Gruppe zerfaellt dabei in einzelne Zeilen, ein Text ebenso.               */
+   abzutippen, legt die Abschrift sie im anderen Reiter noch einmal an; eine
+   Gruppe zerfaellt dabei in einzelne Zeilen, ein Text ebenso. Das Original
+   bleibt unveraendert stehen.                                              */
 
 const BEREICH_NAMEN = { reime: 'Reime', zeilen: 'Zeilen', texte: 'Texte' };
 
-const umzugFeld = (von, id) => `
-  <span class="dialog-feld">Verschieben nach</span>
+const kopierFeld = (von, id) => `
+  <span class="dialog-feld">Kopieren nach</span>
   <div class="reihe">
     ${Object.entries(BEREICH_NAMEN).filter(([b]) => b !== von).map(([b, name]) => `
       <button type="button" class="knopf knopf-still" data-umzug="${b}" data-umzug-von="${von}" data-umzug-id="${esc(id)}">${name}</button>`).join('')}
   </div>
-  <p class="hinweis">Wirkt sofort und schließt dieses Fenster. Ungesicherte Änderungen hier gehen dabei verloren.</p>`;
+  <p class="hinweis">Legt eine Abschrift im anderen Reiter an; hier bleibt alles stehen.
+    Wirkt sofort und schließt dieses Fenster — ungesicherte Änderungen hier gehen dabei verloren.</p>`;
 
 $('#dialog-inhalt').addEventListener('click', fangen(async (e) => {
   const knopf = e.target.closest('[data-umzug]');
   if (!knopf) return;
   const ziel = BEREICH_NAMEN[knopf.dataset.umzug];
-  if (!confirm(`Nach „${ziel}" verschieben?`)) return;
-  await post('/api/reime/verschieben', {
+  if (!confirm(`Eine Abschrift in „${ziel}" anlegen?`)) return;
+  await post('/api/reime/kopieren', {
     von: knopf.dataset.umzugVon,
     nach: knopf.dataset.umzug,
     id: knopf.dataset.umzugId
   });
   dialogSchliessen();
   await reimeLaden();
-  toast(`Nach ${ziel} verschoben`);
+  toast(`Nach ${ziel} kopiert`);
 }));
 
 /* Klammern gehoeren zum Text und werden mitgeschrieben — nur zur Zaehlung
@@ -2976,7 +2985,7 @@ const gruppeDialog = (g) => {
     </label>
     ${KLAMMER_HINWEIS}
     ${katKaestchen(g ? g.kategorien : [])}
-    ${vorhanden ? umzugFeld('reime', g.id) : ''}`,
+    ${vorhanden ? kopierFeld('reime', g.id) : ''}`,
   async () => {
     await post('/api/reime/gruppe', {
       id: g ? g.id : null,
@@ -3018,11 +3027,13 @@ const reimDialog = (gruppeId, vorgabe) => {
 const zeileDialog = (z) => {
   dialogOeffnen(z ? 'Zeile ändern' : 'Neue Zeile', `
     <label class="dialog-feld">Zeile
-      <input class="feld" data-zeilentext data-hinweis-quelle type="text" value="${esc(z ? z.text : '')}">
+      <textarea class="feld feld-hoch" data-zeilentext data-hinweis-quelle rows="4">${esc(z ? (z.inhalt || z.text) : '')}</textarea>
     </label>
+    <p class="hinweis">Mehrere Zeilen sind erlaubt: jeder Umbruch ist eine eigene Zeile,
+      die Silben stehen später gesammelt unter dem Absatz.</p>
     ${KLAMMER_HINWEIS}
     ${katKaestchen(z ? z.kategorien : [])}
-    ${z ? umzugFeld('zeilen', z.id) : ''}`,
+    ${z ? kopierFeld('zeilen', z.id) : ''}`,
   async () => {
     await post('/api/reime/zeile', {
       id: z ? z.id : null,
@@ -3050,7 +3061,7 @@ const textDialog = (t) => {
       <textarea class="feld feld-hoch" data-inhalt data-hinweis-quelle rows="10">${esc(t ? t.zeilen.map((z) => z.text).join('\n') : '')}</textarea>
     </label>
     ${katKaestchen(t ? t.kategorien : [])}
-    ${t ? umzugFeld('texte', t.id) : ''}`,
+    ${t ? kopierFeld('texte', t.id) : ''}`,
   async () => {
     await post('/api/reime/text', {
       id: t ? t.id : null,
@@ -3722,8 +3733,8 @@ $('#reime-faerben-texte').addEventListener('change', fangen(async (e) => {
   await post('/api/reime/anzeige', { faerbenTexte: e.target.checked });
 }));
 
-/* Eine Kategorie gilt in allen drei Reitern. Der Umzug bewegt deshalb nicht
-   mehr die Kategorie, sondern ihre Eintraege von einem Reiter in den anderen —
+/* Eine Kategorie gilt in allen drei Reitern. Abgeschrieben werden deshalb
+   nicht die Kategorie, sondern ihre Eintraege von einem Reiter in den anderen —
    darum steht in der Auswahl beides, woher und wohin. */
 const UMZUG_WEGE = Object.entries(BEREICH_NAMEN).flatMap(([von, vonName]) => Object.entries(BEREICH_NAMEN)
   .filter(([nach]) => nach !== von)
@@ -3738,8 +3749,8 @@ const rkatZeichnen = () => {
       <input class="feld feld-farbe" type="color" value="${esc(k.farbe)}" data-farbe>
       <input class="feld" type="text" value="${esc(k.name)}" data-name>
       <input class="feld" type="text" value="${esc(k.stichwoerter.join(', '))}" data-stich placeholder="Stichwörter">
-      <select class="feld" data-umzug title="Einträge dieser Kategorie in einen anderen Reiter verschieben">
-        <option value="">Einträge umziehen …</option>
+      <select class="feld" data-umzug title="Einträge dieser Kategorie in einen anderen Reiter abschreiben">
+        <option value="">Einträge kopieren …</option>
         ${UMZUG_WEGE.map(([wert, name]) => `<option value="${esc(wert)}">${esc(name)}</option>`).join('')}
       </select>
       <button class="knopf knopf-still" data-speichern>Sichern</button>
@@ -3779,14 +3790,14 @@ $('#rkat-liste').addEventListener('change', fangen(async (e) => {
   const name = zeileEl.querySelector('[data-name]').value;
   const [von, nach] = feld.value.split('>');
   const ziel = BEREICH_NAMEN[nach];
-  if (!confirm(`Alle ${BEREICH_NAMEN[von]} der Kategorie „${name}" nach ${ziel} verschieben? `
-    + 'Reimgruppen werden dabei in einzelne Zeilen aufgeteilt.')) {
+  if (!confirm(`Alle ${BEREICH_NAMEN[von]} der Kategorie „${name}" nach ${ziel} kopieren? `
+    + 'Reimgruppen werden dabei in einzelne Zeilen aufgeteilt; das Original bleibt stehen.')) {
     feld.value = '';
     return;
   }
-  const d = await post('/api/reime/kategorie/verschieben', { von, nach, id: zeileEl.dataset.rkat });
+  const d = await post('/api/reime/kategorie/kopieren', { von, nach, id: zeileEl.dataset.rkat });
   await einstellungenLaden();
-  toast(d.anzahl ? `${d.anzahl} ${d.anzahl === 1 ? 'Eintrag' : 'Einträge'} nach ${ziel} verschoben` : 'Dort lag nichts');
+  toast(d.anzahl ? `${d.anzahl} ${d.anzahl === 1 ? 'Eintrag' : 'Einträge'} nach ${ziel} kopiert` : 'Dort lag nichts');
 }));
 
 $('#rkat-anlegen').addEventListener('click', fangen(async () => {

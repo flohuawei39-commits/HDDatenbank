@@ -96,12 +96,21 @@ Angelegt und gepflegt werden die Kategorien unter Einstellungen › Kategorien; 
 Haken für den Hinweis „passt vielleicht zu …". Löschen geht nur, solange nichts daran hängt
 — in keinem der drei Reiter.
 
-Ein Eintrag kann den Reiter wechseln: im Ändern-Fenster steht „Verschieben nach". Eine
-Gruppe zerfällt dabei in ihren Kopfbegriff und die Reime darunter, ein Text in seine
-Zeilen, eine Zeile wird zum Kopfbegriff einer neuen Gruppe. Die Kategorie kommt mit, sie
-gilt ja überall. Unter Einstellungen › Kategorien schiebt das Feld „Einträge umziehen"
-alles, was an einer Kategorie hängt, von einem Reiter in einen anderen — die Kategorie
-selbst bleibt stehen.
+Im Reiter „Zeilen" darf ein Eintrag ein **Absatz** sein: jeder Umbruch im Ändern-Fenster
+ist eine eigene Zeile. Angezeigt wird erst der Absatz am Stück, darunter stehen die
+Silbenreihen gesammelt — nicht zwischen den Textzeilen, sonst liest sich der Absatz nicht
+mehr. Jede Silbenreihe hat ihre eigenen ‹ ›, ausgerichtet wird über den ganzen Reiter
+hinweg.
+
+Ein Eintrag lässt sich in einen anderen Reiter **abschreiben**: im Ändern-Fenster steht
+„Kopieren nach". Eine Gruppe zerfällt dabei in ihren Kopfbegriff und die Reime darunter,
+ein Text in seine Zeilen, ein Absatz in Kopf und Reime, eine einzelne Zeile wird zum
+Kopfbegriff einer neuen Gruppe. Die Kategorie kommt mit, sie gilt ja überall. Das Original
+bleibt dabei unverändert stehen. Unter Einstellungen › Kategorien schreibt das Feld
+„Einträge kopieren" alles, was an einer Kategorie hängt, in einen anderen Reiter.
+
+Das Dialogfenster lässt sich an der unteren rechten Ecke in beide Richtungen ziehen, die
+mehrzeiligen Felder darin ebenso.
 
 Enter schickt ab: in jedem Fenster ist das „Speichern", in einer Zeile der Einstellungen
 ihr eigenes „Sichern", und die Felder unter einer Liste legen damit den neuen Eintrag an.

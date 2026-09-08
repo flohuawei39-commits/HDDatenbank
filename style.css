@@ -471,6 +471,11 @@ body.start-aktiv .app { padding-bottom: 16px; }
   box-shadow: 0 0 30px -14px var(--neon-cyan);
   border-radius: 14px;
   padding: 18px 20px;
+  /* Das Fenster laesst sich an der unteren rechten Ecke in beide Richtungen
+     ziehen — voreingestellt ist es schmal, manche Zeilen brauchen mehr. */
+  resize: both;
+  min-width: 320px;
+  max-width: 96vw;
 }
 .dialog-kopf { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dialog-inhalt { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 16px; }
@@ -833,7 +838,10 @@ body.start-aktiv .app { padding-bottom: 16px; }
 .feld-silbe { width: 64px; text-align: center; padding-left: 6px; padding-right: 6px; }
 .feld-schmal { width: 80px; }
 .feld-mit-text { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-still); }
-.feld-hoch { min-height: 150px; font-family: inherit; line-height: 1.6; resize: vertical; }
+/* In beide Richtungen ziehbar: manche Zeilen sind lang, und untereinander
+   liest sich ein Absatz nur, wenn er nicht umbricht. Breiter als die Karte
+   geht nicht — dafuer laesst sich die Karte selbst ziehen. */
+.feld-hoch { min-height: 150px; font-family: inherit; line-height: 1.6; resize: both; max-width: 100%; }
 
 /* Ein Schieber je Gruppe, nicht je Zeile: der Behaelter umschliesst alle
    Zeilen einer Gruppe, damit sie beim Scrollen zusammenbleiben und die Spalten
@@ -882,6 +890,12 @@ body.start-aktiv .app { padding-bottom: 16px; }
 
 .reim-rat { margin-top: 8px; padding: 6px 0 4px 10px; border-left: 2px solid var(--rand-hell); }
 .rat-zeile { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; }
+
+/* Im Reiter „Zeilen" steht vor jeder Silbenreihe ihr eigener Schieber. Die
+   Spalte ist fest breit, damit die Raster darunter buendig bleiben, auch wenn
+   bei einer Reihe das ⟲ dazukommt. */
+.silben-reihe { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.silben-fuehrung { flex: none; width: 80px; display: flex; gap: 4px; }
 
 .silben-raster { display: flex; gap: 3px; width: max-content; }
 .silbe {
@@ -1021,6 +1035,9 @@ body.start-aktiv .app { padding-bottom: 16px; }
   .dialog { padding: 0; }
   .dialog-karte {
     width: 100%;
+    max-width: 100%;
+    /* Am Telefon fuellt der Dialog ohnehin den Schirm; ein Griff waere nur im Weg. */
+    resize: none;
     max-height: 100dvh;
     height: 100dvh;
     border-radius: 0;
