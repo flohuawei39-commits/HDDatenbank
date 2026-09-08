@@ -484,6 +484,10 @@ body.start-aktiv .app { padding-bottom: 16px; }
 .dialog-feld > label { font-size: 12px; color: var(--text-still); letter-spacing: .04em; }
 .dialog-paar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .dialog-schalter { display: flex; align-items: center; gap: 8px; color: var(--text-schwach); font-size: 13.5px; }
+/* Der Entwurfshinweis steht oben im Fenster und darf auffallen — sonst tippt
+   man ueber einem alten Stand weiter, ohne es zu merken. */
+.entwurf-hinweis { display: flex; align-items: center; gap: 10px; color: var(--neon-cyan); margin: 0; }
+.entwurf-hinweis .knopf { padding: 2px 10px; font-size: 12px; }
 
 .wahl { display: flex; gap: 6px; flex-wrap: wrap; }
 .wahl button {

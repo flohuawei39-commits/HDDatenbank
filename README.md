@@ -112,6 +112,13 @@ bleibt dabei unverändert stehen. Unter Einstellungen › Kategorien schreibt da
 Das Dialogfenster lässt sich an der unteren rechten Ecke in beide Richtungen ziehen, die
 mehrzeiligen Felder darin ebenso.
 
+Wer ein Fenster mit Escape, über ✕ oder mit einem Klick daneben verlässt, verliert das
+Getippte nicht: der Stand bleibt als **Entwurf** liegen und steht beim nächsten Öffnen
+desselben Fensters wieder da, zusammen mit einem Hinweis und dem Knopf „Verwerfen".
+Gespeichertes und Unverändertes hinterlassen keinen Entwurf. Gehalten wird er, solange die
+Seite offen ist — halbfertiger Text gehört nicht in die Ablage und schon gar nicht in den
+Abgleich, ein Neuladen räumt ihn also weg.
+
 Enter schickt ab: in jedem Fenster ist das „Speichern", in einer Zeile der Einstellungen
 ihr eigenes „Sichern", und die Felder unter einer Liste legen damit den neuen Eintrag an.
 Mehrzeilige Felder bleiben außen vor — dort ist Enter der Zeilenumbruch.

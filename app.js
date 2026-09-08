@@ -1335,6 +1335,54 @@ $('#ab-loesen').addEventListener('click', fangen(async () => {
 let dialogSpeichern = null;
 let dialogLoeschen = null;
 
+/* ---- Entwuerfe --------------------------------------------------------------
+
+   Wer ein Fenster mit Escape verlaesst, hat sich meist nicht gegen das Getippte
+   entschieden, sondern nur weggeklickt. Der Stand bleibt deshalb als Entwurf
+   liegen und steht beim naechsten Oeffnen desselben Fensters wieder da.
+
+   Der Schluessel ist der Titel samt dem Stand, mit dem das Fenster aufging:
+   damit findet derselbe Eintrag seinen Entwurf wieder, ein anderer aber nicht.
+   Gehalten wird nur, solange die Seite offen ist — halbfertiger Text gehoert
+   nicht in die Ablage und schon gar nicht in den Abgleich.                   */
+
+const entwuerfe = new Map();
+let dialogSchluessel = null;
+let dialogAnfang = null;
+let dialogGesichert = false;
+
+const ENTWURF_HINWEIS = `<p class="hinweis entwurf-hinweis">Entwurf von vorhin wiederhergestellt.
+  <button type="button" class="knopf knopf-still" data-entwurf-weg>Verwerfen</button></p>`;
+
+/** Der Stand aller Felder eines Fensters, in der Reihenfolge des HTML. */
+const dialogStand = () => {
+  const inhalt = $('#dialog-inhalt');
+  return {
+    felder: [...inhalt.querySelectorAll('input, textarea, select')]
+      .map((f) => (f.type === 'checkbox' || f.type === 'radio' ? f.checked : f.value)),
+    // Die Wahlfelder sind Knoepfe, kein Formularfeld; gemerkt wird der aktive.
+    wahlen: [...inhalt.querySelectorAll('[data-wahl]')].map((w) => {
+      const aktiv = w.querySelector('[data-wert].aktiv');
+      return aktiv ? aktiv.dataset.wert : '';
+    })
+  };
+};
+
+const dialogStandSetzen = (stand) => {
+  const inhalt = $('#dialog-inhalt');
+  [...inhalt.querySelectorAll('input, textarea, select')].forEach((f, i) => {
+    const wert = stand.felder[i];
+    if (wert === undefined) return;
+    if (f.type === 'checkbox' || f.type === 'radio') f.checked = Boolean(wert);
+    else f.value = wert;
+  });
+  [...inhalt.querySelectorAll('[data-wahl]')].forEach((w, i) => {
+    const wert = stand.wahlen[i];
+    if (wert === undefined) return;
+    [...w.querySelectorAll('[data-wert]')].forEach((b) => b.classList.toggle('aktiv', b.dataset.wert === wert));
+  });
+};
+
 const dialogOeffnen = (titel, inhalt, speichern, loeschen) => {
   $('#dialog-titel').textContent = titel;
   $('#dialog-inhalt').innerHTML = inhalt;
@@ -1342,21 +1390,72 @@ const dialogOeffnen = (titel, inhalt, speichern, loeschen) => {
   $('#dialog-loeschen').classList.toggle('versteckt', !loeschen);
   dialogSpeichern = speichern;
   dialogLoeschen = loeschen;
+  dialogGesichert = false;
+
+  dialogAnfang = dialogStand();
+  dialogSchluessel = `${titel}|${JSON.stringify(dialogAnfang)}`;
+  const entwurf = entwuerfe.get(dialogSchluessel);
+  if (entwurf) {
+    dialogStandSetzen(entwurf);
+    $('#dialog-inhalt').insertAdjacentHTML('afterbegin', ENTWURF_HINWEIS);
+  }
+
   const erstes = $('#dialog-inhalt').querySelector('input, textarea, select');
   if (erstes) erstes.focus();
 };
 
 const dialogSchliessen = () => {
+  // Was sich geaendert hat und nicht gesichert wurde, bleibt als Entwurf liegen.
+  if (dialogSchluessel) {
+    const jetzt = dialogStand();
+    if (!dialogGesichert && JSON.stringify(jetzt) !== JSON.stringify(dialogAnfang)) {
+      entwuerfe.set(dialogSchluessel, jetzt);
+      toast('Als Entwurf gemerkt');
+    } else {
+      entwuerfe.delete(dialogSchluessel);
+    }
+  }
+  dialogSchluessel = null;
+  dialogAnfang = null;
+
   $('#dialog').classList.add('versteckt');
   $('#dialog-inhalt').innerHTML = '';
   dialogSpeichern = null;
   dialogLoeschen = null;
 };
 
+$('#dialog-inhalt').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-entwurf-weg]')) return;
+  entwuerfe.delete(dialogSchluessel);
+  dialogStandSetzen(dialogAnfang);
+  const hinweis = $('#dialog-inhalt').querySelector('.entwurf-hinweis');
+  if (hinweis) hinweis.remove();
+  toast('Entwurf verworfen');
+});
+
 $('#dialog-zu').addEventListener('click', dialogSchliessen);
 $('#dialog').addEventListener('click', (e) => { if (e.target.id === 'dialog') dialogSchliessen(); });
-$('#dialog-speichern').addEventListener('click', fangen(async () => { if (dialogSpeichern) await dialogSpeichern(); }));
-$('#dialog-loeschen').addEventListener('click', fangen(async () => { if (dialogLoeschen) await dialogLoeschen(); }));
+$('#dialog-speichern').addEventListener('click', fangen(async () => {
+  if (!dialogSpeichern) return;
+  // Gesichertes braucht keinen Entwurf mehr; scheitert es, bleibt er bestehen.
+  dialogGesichert = true;
+  try {
+    await dialogSpeichern();
+  } catch (fehler) {
+    dialogGesichert = false;
+    throw fehler;
+  }
+}));
+$('#dialog-loeschen').addEventListener('click', fangen(async () => {
+  if (!dialogLoeschen) return;
+  dialogGesichert = true;
+  try {
+    await dialogLoeschen();
+  } catch (fehler) {
+    dialogGesichert = false;
+    throw fehler;
+  }
+}));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#dialog').classList.contains('versteckt')) dialogSchliessen(); });
 
 /* ---- Enter schickt ab -------------------------------------------------------
