@@ -535,6 +535,7 @@ const zeile = (v, optionen = {}) => {
 
   return `<div class="${klassen.join(' ')}" style="${farbe ? `--kat:${esc(farbe)}` : ''}" data-id="${esc(v.id)}" data-datum="${esc(v.start || v.datum || '')}" data-art="eintrag">
     <button class="zeile-haken" data-haken="1" title="erledigt">${v.erledigt ? '✓' : ''}</button>
+    ${v.wiederkehrend ? '<button class="zeile-haken zeile-auslassen" data-auslassen="1" title="dieses Vorkommen auslassen — die Serie bleibt">⊘</button>' : ''}
     ${zeit ? `<span class="zeile-zeit">${zeit}</span>` : ''}
     <span class="zeile-text">${esc(v.text)}</span>
     ${marken.join(' ')}
@@ -1653,6 +1654,17 @@ const eintragDialog = (vorgabe) => {
       <div class="dialog-feld"><label>jede(n) … (Intervall)</label><input class="feld" id="d-intervall" type="number" min="1" max="52" value="${e.wiederholung ? e.wiederholung.intervall : 1}"></div>
       <div class="dialog-feld"><label>Serie endet am (optional)</label><input class="feld" id="d-wdhbis" type="date" value="${esc(e.wiederholung && e.wiederholung.bis ? e.wiederholung.bis : '')}"></div>
     </div>
+    <div class="dialog-feld" id="d-ausnahmen-block" ${e.wiederholung ? '' : 'hidden'}>
+      <label>Ausnahmen — Tage, an denen die Serie diesmal ausfällt</label>
+      <div id="d-ausnahmen-liste" class="ausnahmen-liste"></div>
+      <div class="reihe">
+        ${e.vorkommen && e.wiederholung
+    ? `<button type="button" class="knopf knopf-still" data-ausnahme-vorkommen="${esc(e.vorkommen)}">Das Vorkommen am ${esc(formatDE(e.vorkommen))} auslassen</button>`
+    : ''}
+        <input class="feld feld-schmal" id="d-ausnahme-datum" type="date" style="width:auto">
+        <button type="button" class="knopf knopf-still" id="d-ausnahme-neu">Tag auslassen</button>
+      </div>
+    </div>
     <p class="hinweis" style="margin:0">Ein Eintrag der Art „Frist" erscheint 14 Tage vorher auf der Startseite,
       einer der Art „Aufgabe" unter den offenen Aufgaben.</p>`;
 
@@ -1668,7 +1680,9 @@ const eintragDialog = (vorgabe) => {
       kategorie: $('#d-kat').value && $('#d-kat').value !== NEU_WERT ? $('#d-kat').value : null,
       art: $('#d-art').value && $('#d-art').value !== NEU_WERT ? $('#d-art').value : null,
       prioritaet: wahlWert('prio'),
-      wiederholung: typ ? { typ, intervall: Number($('#d-intervall').value) || 1, bis: $('#d-wdhbis').value || null } : null
+      wiederholung: typ
+        ? { typ, intervall: Number($('#d-intervall').value) || 1, bis: $('#d-wdhbis').value || null, ausnahmen }
+        : null
     });
     dialogSchliessen();
     toast('Gespeichert');
@@ -1679,6 +1693,48 @@ const eintragDialog = (vorgabe) => {
     toast('Gelöscht');
     await neuZeichnen();
   } : null);
+
+  /* Ausnahmen leben im Fenster, bis gespeichert wird — genau wie alles andere
+     darin. So laesst sich ein Vorkommen auslassen, ohne die Serie anzufassen
+     oder neu anzulegen. */
+  const ausnahmen = [...((e.wiederholung && e.wiederholung.ausnahmen) || [])];
+  const ausnahmenZeichnen = () => {
+    ausnahmen.sort();
+    $('#d-ausnahmen-liste').innerHTML = ausnahmen.length
+      ? ausnahmen.map((tag) => `<span class="zeile-marke ausnahme-marke">${esc(formatDE(tag))}
+          <button type="button" class="ausnahme-weg" data-ausnahme-weg="${esc(tag)}" title="Ausnahme zurücknehmen">✕</button></span>`).join('')
+      : '<span class="hinweis" style="margin:0">Keine — die Serie läuft an jedem Tag.</span>';
+  };
+  const ausnahmeDazu = (tag) => {
+    if (!tag || ausnahmen.includes(tag)) return;
+    ausnahmen.push(tag);
+    ausnahmenZeichnen();
+  };
+  ausnahmenZeichnen();
+
+  /* Die Horcher haengen am Block im Fenster, nicht am Fenster selbst: das
+     Fenster bleibt bestehen, sein Inhalt wird je Dialog neu gebaut — ein
+     Horcher am Fenster liefe sonst bei jedem spaeteren Dialog noch einmal mit. */
+  const inhaltEl = $('#dialog-inhalt');
+  $('#d-ausnahmen-block').addEventListener('click', (ev) => {
+    const vorkommen = ev.target.closest('[data-ausnahme-vorkommen]');
+    if (vorkommen) return ausnahmeDazu(vorkommen.dataset.ausnahmeVorkommen);
+    const weg = ev.target.closest('[data-ausnahme-weg]');
+    if (weg) {
+      ausnahmen.splice(ausnahmen.indexOf(weg.dataset.ausnahmeWeg), 1);
+      return ausnahmenZeichnen();
+    }
+    if (ev.target.closest('#d-ausnahme-neu')) {
+      ausnahmeDazu($('#d-ausnahme-datum').value);
+      $('#d-ausnahme-datum').value = '';
+    }
+    return null;
+  });
+
+  // Der Block zeigt sich erst, wenn es ueberhaupt eine Serie gibt.
+  inhaltEl.querySelector('[data-wahl="wdh"]').addEventListener('click', () => {
+    setTimeout(() => { $('#d-ausnahmen-block').hidden = !wahlWert('wdh'); }, 0);
+  });
 };
 
 const aufgabeDialog = (vorgabe) => {
@@ -1768,6 +1824,17 @@ document.addEventListener('click', fangen(async (e) => {
   const zeileEl = e.target.closest('.zeile');
   if (!zeileEl || !zeileEl.dataset.art) return;
 
+  // Ein Vorkommen einer Serie auslassen, ohne die Serie anzufassen.
+  const auslassen = e.target.closest('[data-auslassen]');
+  if (auslassen) {
+    e.stopPropagation();
+    if (!confirm(`Dieses Vorkommen am ${formatDE(zeileEl.dataset.datum)} auslassen? Die Serie bleibt bestehen.`)) return;
+    await post('/api/eintrag/ausnahme', { id: zeileEl.dataset.id, datum: zeileEl.dataset.datum, wert: true });
+    await neuZeichnen();
+    toast('Vorkommen ausgelassen');
+    return;
+  }
+
   const haken = e.target.closest('[data-haken]');
   if (haken) {
     e.stopPropagation();
@@ -1791,7 +1858,9 @@ document.addEventListener('click', fangen(async (e) => {
 
   const daten = await api('/api/daten');
   const eintrag = daten.entries.find((x) => x.id === zeileEl.dataset.id);
-  if (eintrag) eintragDialog(eintrag);
+  // Der angeklickte Tag kommt mit: bei einer Serie ist das das Vorkommen, das
+  // sich mit einem Klick auslassen laesst.
+  if (eintrag) eintragDialog({ ...eintrag, vorkommen: zeileEl.dataset.datum || null });
 }));
 
 // ---------------------------------------------------------------- Tierschutzzentrum

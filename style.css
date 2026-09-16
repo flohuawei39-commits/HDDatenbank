@@ -318,6 +318,12 @@ body.start-aktiv .app { padding-bottom: 16px; }
 .kal-summe-minus { color: var(--neon-koralle); }
 .kal-summe-anzahl { margin-left: 6px; }
 .kal-pille-geld { opacity: .75; font-variant-numeric: tabular-nums; }
+.zeile-auslassen { font-size: 12px; opacity: .6; }
+.zeile-auslassen:hover { opacity: 1; }
+.ausnahmen-liste { display: flex; flex-wrap: wrap; gap: 6px; }
+.ausnahme-marke { display: inline-flex; align-items: center; gap: 4px; }
+.ausnahme-weg { background: none; border: none; color: var(--text-still); cursor: pointer; padding: 0 2px; font-size: 11px; }
+.ausnahme-weg:hover { color: var(--text); }
 .zeile-marke-geld { font-variant-numeric: tabular-nums; color: var(--neon-gruen); border-color: currentColor; }
 .zeile-marke-minus { color: var(--neon-koralle); }
 

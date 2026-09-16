@@ -194,6 +194,15 @@ Drei Vorlagen: **Signalzeile oben** (Vorgabe), **Dreispalter**, **Arbeitsfläche
 Randleiste**. Am Rechner scrollt die Startseite nicht — jede Kachel hat eine Höhengrenze und
 scrollt bei Bedarf für sich. Unter 900 Pixel Breite fällt sie auf eine Spalte zurück.
 
+## Ausnahmen in Serien
+
+Eine Serie muss nicht neu angelegt werden, nur weil sie einmal ausfällt. Im
+Eintragsfenster einer Serie steht der Block „Ausnahmen": ein Knopf lässt das gerade
+angeklickte Vorkommen aus, ein Datumsfeld jeden anderen Tag, und jede Ausnahme lässt sich
+über ihr ✕ wieder zurücknehmen. Noch kürzer geht es in der Tagesliste mit ⊘ neben dem
+Haken. Die Serie selbst bleibt unangetastet; Startseite, Tagesmail und das nächste
+Vorkommen überspringen ausgelassene Tage genauso wie der Kalender.
+
 ## Beträge im Kalender
 
 Jeder Kalendereintrag kann einen Betrag tragen, Ausgaben mit Minus, in deutscher
