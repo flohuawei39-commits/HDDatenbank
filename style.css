@@ -311,6 +311,15 @@ body.start-aktiv .app { padding-bottom: 16px; }
 
 .kal-kopf { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .kal-titel { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+/* Die Monatssumme direkt unter dem Titel: was der Monat an Geld bewegt. */
+.kal-summe { margin: -4px 0 10px; font-size: 13px; color: var(--text-still); font-variant-numeric: tabular-nums; }
+.kal-summe strong { font-size: 15px; }
+.kal-summe-plus { color: var(--neon-gruen); }
+.kal-summe-minus { color: var(--neon-koralle); }
+.kal-summe-anzahl { margin-left: 6px; }
+.kal-pille-geld { opacity: .75; font-variant-numeric: tabular-nums; }
+.zeile-marke-geld { font-variant-numeric: tabular-nums; color: var(--neon-gruen); border-color: currentColor; }
+.zeile-marke-minus { color: var(--neon-koralle); }
 
 .kal-wochentage { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
 .kal-wochentage span { text-align: center; font-size: 11.5px; color: var(--text-still); letter-spacing: .08em; }

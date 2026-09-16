@@ -27,6 +27,10 @@ Fest verabredet sind dabei äu → eu, ai und ay → ei, y → i; Doppelvokale u
 fallen auf den Grundvokal zusammen. „ie" ist ein eigener Laut und wird **nicht** zu i —
 wer beides gleich behandeln will, merkt an der Silbe zusätzlich i an. Das Regelwerk steht in `lib/silben.js` und
 kommt ohne Wörterbuch aus — was daneben liegt, korrigierst du an der Silbe selbst.
+Dazu kommen „io", „iu" und „ui" als Laute für Anmerkung, Korrektur und Suche; aus der
+Schreibweise werden sie bewusst nicht erkannt, weil das im Deutschen fast immer zwei
+Silben sind (Na-ti-on, Ru-i-ne, Ra-di-um). Wer ein Wort als einen Klang spricht, merkt es an
+der Silbe an.
 
 - **Reime**: ein Kopfbegriff, darunter die Reime. Die Zeilen werden so verschoben, dass die
   passenden Silben untereinander stehen; hinter jeder steht, wie viele Silben zur Zeile
@@ -189,6 +193,17 @@ anfassen und ziehen, oder über die Knöpfe `‹ ›` die Spalte wechseln, `⬆ 
 Drei Vorlagen: **Signalzeile oben** (Vorgabe), **Dreispalter**, **Arbeitsfläche mit
 Randleiste**. Am Rechner scrollt die Startseite nicht — jede Kachel hat eine Höhengrenze und
 scrollt bei Bedarf für sich. Unter 900 Pixel Breite fällt sie auf eine Spalte zurück.
+
+## Beträge im Kalender
+
+Jeder Kalendereintrag kann einen Betrag tragen, Ausgaben mit Minus, in deutscher
+Schreibweise („12,50", „-1.250,00 €"). Unter dem Monatstitel steht dann, was der Monat
+zusammenbringt: Einnahmen, Ausgaben und der Saldo, samt Zahl der Einträge. Ein
+mehrtägiger Eintrag zählt einmal, in dem Monat, in dem er anfängt; eine monatliche Serie
+zählt in jedem Monat wieder. Der Betrag steht auch an der Pille im Gitter und in der
+Tagesliste. Leer heißt: kein Betrag — das ist etwas anderes als null Euro. Mit den
+Finanzen (Kontoauszüge) hat das nichts zu tun, es ist eine eigene, bewusst einfache
+Rechnung.
 
 ## Schnelleingabe
 

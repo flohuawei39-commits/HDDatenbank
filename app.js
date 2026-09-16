@@ -518,6 +518,9 @@ const zeile = (v, optionen = {}) => {
   if (kat) marken.push(`<span class="zeile-marke zeile-marke-neon" style="--ton:${esc(kat.farbe)}">${esc(kat.name)}</span>`);
   if (v.wiederkehrend) marken.push('<span class="zeile-marke">Serie</span>');
   if (v.mehrtaegig) marken.push(`<span class="zeile-marke">${esc(formatKurz(v.start))}–${esc(formatKurz(v.ende))}</span>`);
+  if (v.betrag !== null && v.betrag !== undefined) {
+    marken.push(`<span class="zeile-marke zeile-marke-geld${v.betrag < 0 ? ' zeile-marke-minus' : ''}">${esc(euro(v.betrag))}</span>`);
+  }
 
   const zeit = v.uhrzeit ? esc(v.uhrzeit) : (optionen.zeitText ? esc(optionen.zeitText) : '');
 
@@ -847,9 +850,28 @@ const monatLaden = async () => {
   kalenderZeichnen();
 };
 
+/* Die Monatssumme unter dem Titel. Mit Einnahmen und Ausgaben zugleich steht
+   die Rechnung da, sonst nur die eine Zahl. */
+const summeZeichnen = (summe) => {
+  const ziel = $('#kal-summe');
+  if (!summe || !summe.anzahl) {
+    ziel.textContent = '';
+    ziel.classList.add('versteckt');
+    return;
+  }
+  const gemischt = summe.plus > 0 && summe.minus < 0;
+  const rechnung = gemischt
+    ? `<span class="kal-summe-plus">+${esc(euro(summe.plus))}</span> <span class="kal-summe-minus">${esc(euro(summe.minus))}</span> = `
+    : '';
+  ziel.innerHTML = `${rechnung}<strong class="${summe.saldo < 0 ? 'kal-summe-minus' : 'kal-summe-plus'}">${esc(euro(summe.saldo))}</strong>
+    <span class="kal-summe-anzahl">aus ${summe.anzahl} ${summe.anzahl === 1 ? 'Eintrag' : 'Einträgen'}</span>`;
+  ziel.classList.remove('versteckt');
+};
+
 const kalenderZeichnen = () => {
   const d = S.monat;
   $('#kal-titel').textContent = `${MONATE[S.kalMonat - 1]} ${S.kalJahr}`;
+  summeZeichnen(d.summe);
 
   $('#kal-gitter').innerHTML = d.gitter.map((tag) => {
     const fremd = Number(tag.slice(5, 7)) !== S.kalMonat;
@@ -868,7 +890,10 @@ const kalenderZeichnen = () => {
       else if (e.prioritaet === 'hoch') p.push('kal-pille-hoch');
       const farbe = katFarbe(e.kategorie);
       const vorn = e.mehrtaegig && !e.ersterTag ? '· ' : '';
-      pillen.push(`<div class="${p.join(' ')}" style="${farbe ? `--kat:${esc(farbe)}` : ''}">${vorn}${e.uhrzeit ? `${esc(e.uhrzeit)} ` : ''}${esc(e.text)}</div>`);
+      // Der Betrag steht am ersten Tag dabei; an den Folgetagen zaehlt er ja nicht noch einmal.
+      const geld = e.betrag !== null && e.betrag !== undefined && (!e.mehrtaegig || e.ersterTag)
+        ? ` <span class="kal-pille-geld">${esc(euro(e.betrag))}</span>` : '';
+      pillen.push(`<div class="${p.join(' ')}" style="${farbe ? `--kat:${esc(farbe)}` : ''}">${vorn}${e.uhrzeit ? `${esc(e.uhrzeit)} ` : ''}${esc(e.text)}${geld}</div>`);
     }
     for (const a of aufgaben.slice(0, 2)) {
       pillen.push(`<div class="kal-pille kal-pille-aufgabe">${esc(a.titel)}</div>`);
@@ -1590,7 +1615,7 @@ document.addEventListener('change', fangen(async (e) => {
 
 const eintragDialog = (vorgabe) => {
   const e = {
-    id: null, datum: S.heute || heuteISO(), datumBis: null, uhrzeit: null, text: '',
+    id: null, datum: S.heute || heuteISO(), datumBis: null, uhrzeit: null, text: '', betrag: null,
     kategorie: null, art: null, prioritaet: 'mittel', istFrist: false, wiederholung: null, ...vorgabe
   };
   // Ohne Angabe: mit Uhrzeit ist es ein Termin, ohne eine Aufgabe.
@@ -1610,6 +1635,10 @@ const eintragDialog = (vorgabe) => {
       <div class="dialog-feld"><label>Art</label>
         <select class="feld" id="d-art" data-neufeld="art" data-vorher="${esc(art)}">${neuOptionen('art', art)}</select>
       </div>
+    </div>
+    <div class="dialog-feld"><label>Betrag in € (optional, Ausgaben mit Minus)</label>
+      <input class="feld" id="d-betrag" type="text" inputmode="decimal" placeholder="z. B. 12,50 oder -8"
+        value="${e.betrag === null || e.betrag === undefined ? '' : esc(String(e.betrag).replace('.', ','))}">
     </div>
     <div class="dialog-feld"><label>Kategorie</label>
       <select class="feld" id="d-kat" data-neufeld="kat" data-vorher="${esc(e.kategorie || '')}">${neuOptionen('kat', e.kategorie)}</select>
@@ -1635,6 +1664,7 @@ const eintragDialog = (vorgabe) => {
       datum: $('#d-datum').value,
       datumBis: $('#d-bis').value || null,
       uhrzeit: $('#d-zeit').value || null,
+      betrag: $('#d-betrag').value,
       kategorie: $('#d-kat').value && $('#d-kat').value !== NEU_WERT ? $('#d-kat').value : null,
       art: $('#d-art').value && $('#d-art').value !== NEU_WERT ? $('#d-art').value : null,
       prioritaet: wahlWert('prio'),
