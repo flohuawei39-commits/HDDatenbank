@@ -237,6 +237,18 @@ Tagesliste. Leer heißt: kein Betrag — das ist etwas anderes als null Euro. Mi
 Finanzen (Kontoauszüge) hat das nichts zu tun, es ist eine eigene, bewusst einfache
 Rechnung.
 
+Seit `2026-09-16e` laufen die Kalenderbeträge zusätzlich als eigenes Konto „Kalender" in den
+Finanzen mit (`lib/kalendergeld.js`): jedes Vorkommen eines Eintrags mit Betrag wird beim
+Lesen zu einer Buchung, gespeichert wird dabei nichts. Die Finanzkachel auf der Startseite
+zeigt „Kalender" als eigene Zeile neben N26 und Wise, die Zusammen-Zeile zählt es mit; im
+Finanzen-Reiter stehen die Buchungen mit gelber Marke „Kalender", die Übersicht nennt ihre
+Zahl. Ein Klick auf so eine Buchung öffnet den Kalendereintrag, nicht das Zuordnen-Fenster;
+Kategorie und Bereich lassen sich dort nicht umbiegen. Die Kategorie kommt über den Namen:
+heißt die Kalenderkategorie wie eine Finanzkategorie („Wohnen & Nebenkosten"), wird sie
+übernommen. Ohne gewählten Zeitraum („alles") reicht der Kalender bis zum Jahresende.
+Aufpassen: steht die Miete im Kalender **und** im Kontoauszug, zählt sie in „Zusammen"
+doppelt, die Einzelzeilen zeigen aber jederzeit, was woher kommt.
+
 ## Schnelleingabe
 
 Eine Zeile statt Formular:

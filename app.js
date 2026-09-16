@@ -769,7 +769,7 @@ const finanzKachelZeichnen = () => {
   const einzeln = ansicht === 'einzeln' && konten.length > 1;
 
   $('#finanz-konten').innerHTML = einzeln
-    ? `${konten.map((k) => `<div class="finanz-konto">
+    ? `${konten.map((k) => `<div class="finanz-konto${k.bank === 'Kalender' ? ' finanz-konto-kalender' : ''}">
         <span class="finanz-konto-name">${esc(k.bank)}</span>
         ${finanzZahlen(k)}
       </div>`).join('')}
@@ -2401,7 +2401,7 @@ const finanzenZeichnen = (d) => {
 
   $('#fin-uebersicht').innerHTML = `
     <section class="block">
-      <h2 class="block-titel">Übersicht <span class="block-neben">${d.anzahl} Buchungen${d.umbuchungen ? `, davon ${d.umbuchungen} Umbuchungen nicht gezählt` : ''}</span></h2>
+      <h2 class="block-titel">Übersicht <span class="block-neben">${d.anzahl} Buchungen${d.ausKalender ? `, davon ${d.ausKalender} aus dem Kalender` : ''}${d.umbuchungen ? `, davon ${d.umbuchungen} Umbuchungen nicht gezählt` : ''}</span></h2>
       <div class="kachel-zahlen">
         <div class="kachel-wert"><span class="kachel-label">Einnahmen</span><span class="kachel-zahl kachel-plus">${esc(euro(d.einnahmen))}</span></div>
         <div class="kachel-wert"><span class="kachel-label">Ausgaben</span><span class="kachel-zahl kachel-minus">${esc(euro(d.ausgaben))}</span></div>
@@ -2427,7 +2427,7 @@ const finanzenZeichnen = (d) => {
           ${b.umbuchung ? '<span class="zeile-marke">Umbuchung</span>' : ''}
           ${b.bereich === 'geschaeftlich' ? '<span class="zeile-marke zeile-marke-neon" style="--ton:var(--neon-violett)">geschäftlich</span>' : ''}
           <span class="zeile-marke">${esc(kat ? kat.name : 'ohne Kategorie')}</span>
-          <span class="zeile-marke">${esc(b.bank)}</span>
+          <span class="zeile-marke${b.quelle === 'kalender' ? ' zeile-marke-neon' : ''}" ${b.quelle === 'kalender' ? 'style="--ton:var(--neon-amber)"' : ''}>${esc(b.bank)}</span>
           <span class="bal-wert ${b.betrag < 0 ? 'kachel-minus' : 'kachel-plus'}">${esc(euro(b.betrag))}</span>
         </div>`;
   }).join('')}
@@ -2443,7 +2443,15 @@ $('#fin-uebersicht').addEventListener('click', fangen(async (e) => {
   const zeileEl = e.target.closest('[data-buchung]');
   if (!zeileEl) return;
   const buchung = S.finBuchungen.find((b) => b.id === zeileEl.dataset.buchung);
-  if (buchung) buchungDialog(buchung);
+  if (!buchung) return;
+  // Kalenderbetraege gehoeren dem Kalender: dort wird geaendert, nicht hier.
+  if (buchung.quelle === 'kalender') {
+    const daten = await api('/api/daten');
+    const eintrag = daten.entries.find((x) => x.id === buchung.eintragId);
+    if (eintrag) eintragDialog({ ...eintrag, vorkommen: buchung.datum });
+    return;
+  }
+  buchungDialog(buchung);
 }));
 
 /* --------------------------------------------------- Finanzkategorien anlegen

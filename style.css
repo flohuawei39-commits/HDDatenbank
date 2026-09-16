@@ -322,6 +322,7 @@ body.start-aktiv .app { padding-bottom: 16px; }
 .zeile-auslassen:hover { opacity: 1; }
 .zeile-adresse { text-decoration: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; border-style: dashed; }
 .zeile-adresse:hover { color: var(--text); border-color: var(--text-still); }
+.finanz-konto-kalender .finanz-konto-name { color: var(--neon-amber); }
 .vorlage-zeile { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .vorlage-hinweis { margin: 0; flex: 1; min-width: 0; }
 .vorlage-zeile-liste { flex-wrap: wrap; }
