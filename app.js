@@ -500,6 +500,12 @@ $('#schnell-feld').addEventListener('keydown', (e) => { if (e.key === 'Enter') s
 
 // ---------------------------------------------------------------- Zeilenbau
 
+/* Die Adresse fuehrt auf die Karte: am Handy heisst das mit einem Tipp zur
+   Navigation. Ein Link statt eines Knopfs, damit das Oeffnen im neuen Tab und
+   das Kopieren der Adresse wie bei jedem anderen Link funktionieren. */
+const adressLink = (adresse) => `<a class="zeile-marke zeile-adresse" data-adresse="1" target="_blank" rel="noopener"
+    href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}" title="Auf der Karte zeigen">${esc(adresse)}</a>`;
+
 const zeile = (v, optionen = {}) => {
   const klassen = ['zeile'];
   if (v.erledigt) klassen.push('zeile-erledigt');
@@ -521,6 +527,7 @@ const zeile = (v, optionen = {}) => {
   if (v.betrag !== null && v.betrag !== undefined) {
     marken.push(`<span class="zeile-marke zeile-marke-geld${v.betrag < 0 ? ' zeile-marke-minus' : ''}">${esc(euro(v.betrag))}</span>`);
   }
+  if (v.adresse) marken.push(adressLink(v.adresse));
 
   const zeit = v.uhrzeit ? esc(v.uhrzeit) : (optionen.zeitText ? esc(optionen.zeitText) : '');
 
@@ -1080,7 +1087,7 @@ const vorlagenZeichnen = async () => {
   const katName = (id) => { const k = kategorie(id); return k ? k.name : null; };
   ziel.innerHTML = vorlagen.map((v) => {
     const teile = [
-      v.uhrzeit, artName(v.art), katName(v.kategorie),
+      v.uhrzeit, v.adresse, artName(v.art), katName(v.kategorie),
       v.betrag !== null && v.betrag !== undefined ? euro(v.betrag) : null,
       v.prioritaet && v.prioritaet !== 'mittel' ? `Priorität ${v.prioritaet}` : null,
       v.tage ? `${v.tage + 1} Tage` : null
@@ -1655,7 +1662,7 @@ const betragFeld = (n) => Number(n).toFixed(2).replace('.', ',');
 
 const eintragDialog = (vorgabe) => {
   const e = {
-    id: null, datum: S.heute || heuteISO(), datumBis: null, uhrzeit: null, text: '', betrag: null,
+    id: null, datum: S.heute || heuteISO(), datumBis: null, uhrzeit: null, text: '', adresse: null, betrag: null,
     kategorie: null, art: null, prioritaet: 'mittel', istFrist: false, wiederholung: null, ...vorgabe
   };
   // Ohne Angabe: mit Uhrzeit ist es ein Termin, ohne eine Aufgabe.
@@ -1668,7 +1675,7 @@ const eintragDialog = (vorgabe) => {
       <datalist id="d-vorlagen"></datalist>
       <div class="vorlage-zeile">
         <span class="hinweis vorlage-hinweis" id="d-vorlage-hinweis"></span>
-        <button type="button" class="knopf knopf-still" id="d-vorlage-merken" title="Uhrzeit, Art, Kategorie, Betrag, Priorität und Dauer unter diesem Namen merken">Als Vorlage merken</button>
+        <button type="button" class="knopf knopf-still" id="d-vorlage-merken" title="Uhrzeit, Adresse, Art, Kategorie, Betrag, Priorität und Dauer unter diesem Namen merken">Als Vorlage merken</button>
       </div>
     </div>
     <div class="dialog-paar">
@@ -1679,6 +1686,13 @@ const eintragDialog = (vorgabe) => {
       <div class="dialog-feld"><label>Uhrzeit (optional)</label><input class="feld" id="d-zeit" type="time" value="${esc(e.uhrzeit || '')}"></div>
       <div class="dialog-feld"><label>Art</label>
         <select class="feld" id="d-art" data-neufeld="art" data-vorher="${esc(art)}">${neuOptionen('art', art)}</select>
+      </div>
+    </div>
+    <div class="dialog-feld"><label>Adresse (optional)</label>
+      <div class="reihe">
+        <input class="feld" id="d-adresse" type="text" autocomplete="off" placeholder="Straße, Ort" value="${esc(e.adresse || '')}">
+        <a class="knopf knopf-still${e.adresse ? '' : ' versteckt'}" id="d-adresse-karte" target="_blank" rel="noopener"
+          href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.adresse || '')}">Karte</a>
       </div>
     </div>
     <div class="dialog-feld"><label>Betrag in € (optional, Ausgaben mit Minus)</label>
@@ -1720,6 +1734,7 @@ const eintragDialog = (vorgabe) => {
       datum: $('#d-datum').value,
       datumBis: $('#d-bis').value || null,
       uhrzeit: $('#d-zeit').value || null,
+      adresse: $('#d-adresse').value,
       betrag: $('#d-betrag').value,
       kategorie: $('#d-kat').value && $('#d-kat').value !== NEU_WERT ? $('#d-kat').value : null,
       art: $('#d-art').value && $('#d-art').value !== NEU_WERT ? $('#d-art').value : null,
@@ -1780,7 +1795,17 @@ const eintragDialog = (vorgabe) => {
     setTimeout(() => { $('#d-ausnahmen-block').hidden = !wahlWert('wdh'); }, 0);
   });
 
-  vorlagenAnbinden(e);
+  // Der Kartenknopf folgt dem Feld — und verschwindet, wenn nichts drinsteht.
+  const adresseEl = $('#d-adresse');
+  const karteEl = $('#d-adresse-karte');
+  const karteNach = () => {
+    const wert = adresseEl.value.trim();
+    karteEl.classList.toggle('versteckt', !wert);
+    karteEl.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(wert)}`;
+  };
+  adresseEl.addEventListener('input', karteNach);
+
+  vorlagenAnbinden(e, karteNach);
 };
 
 /* ---- Vorlagen im Eintragsfenster -----------------------------------------
@@ -1797,7 +1822,7 @@ const wahlSetzen = (name, wert) => {
   [...gruppe.querySelectorAll('[data-wert]')].forEach((b) => b.classList.toggle('aktiv', b.dataset.wert === wert));
 };
 
-const vorlagenAnbinden = (e) => {
+const vorlagenAnbinden = (e, nachAnwenden = () => {}) => {
   const textEl = $('#d-text');
   const hinweis = $('#d-vorlage-hinweis');
   let namen = [];
@@ -1827,9 +1852,11 @@ const vorlagenAnbinden = (e) => {
     }
     vorher = {
       '#d-zeit': $('#d-zeit').value, '#d-bis': $('#d-bis').value, '#d-betrag': $('#d-betrag').value,
+      '#d-adresse': $('#d-adresse').value,
       '#d-kat': $('#d-kat').value, '#d-art': $('#d-art').value, prio: wahlWert('prio')
     };
     if (v.uhrzeit) $('#d-zeit').value = v.uhrzeit;
+    if (v.adresse) $('#d-adresse').value = v.adresse;
     if (v.datumBis) $('#d-bis').value = v.datumBis;
     if (v.betrag !== null && v.betrag !== undefined) $('#d-betrag').value = betragFeld(v.betrag);
     if (v.kategorie && $('#d-kat').querySelector(`option[value="${v.kategorie}"]`)) $('#d-kat').value = v.kategorie;
@@ -1837,6 +1864,7 @@ const vorlagenAnbinden = (e) => {
     $('#d-kat').dataset.vorher = $('#d-kat').value;
     $('#d-art').dataset.vorher = $('#d-art').value;
     if (v.prioritaet) wahlSetzen('prio', v.prioritaet);
+    nachAnwenden();
     hinweis.textContent = antwort.quelle === 'vorlage'
       ? `Felder aus der Vorlage „${name}" übernommen.`
       : `Felder aus dem letzten Eintrag „${name}" übernommen.`;
@@ -1856,6 +1884,7 @@ const vorlagenAnbinden = (e) => {
       datum: $('#d-datum').value,
       datumBis: $('#d-bis').value || null,
       uhrzeit: $('#d-zeit').value || null,
+      adresse: $('#d-adresse').value,
       betrag: $('#d-betrag').value,
       kategorie: $('#d-kat').value && $('#d-kat').value !== NEU_WERT ? $('#d-kat').value : null,
       art: $('#d-art').value && $('#d-art').value !== NEU_WERT ? $('#d-art').value : null,
@@ -1954,6 +1983,8 @@ document.addEventListener('click', fangen(async (e) => {
 
   const zeileEl = e.target.closest('.zeile');
   if (!zeileEl || !zeileEl.dataset.art) return;
+  // Der Kartenlink macht seine Arbeit selbst; das Fenster bleibt zu.
+  if (e.target.closest('[data-adresse]')) return;
 
   // Ein Vorkommen einer Serie auslassen, ohne die Serie anzufassen.
   const auslassen = e.target.closest('[data-auslassen]');

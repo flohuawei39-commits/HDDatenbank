@@ -207,7 +207,7 @@ Vorkommen überspringen ausgelassene Tage genauso wie der Kalender.
 
 Was öfter, aber unregelmäßig ansteht (Zahnarzt, Chorprobe, die Miete an wechselnden
 Tagen), muss nicht jedes Mal neu ausgefüllt werden. Im Eintragsfenster merkt „Als Vorlage
-merken" Uhrzeit, Art, Kategorie, Betrag, Priorität und Dauer unter dem eingetippten Namen;
+merken" Uhrzeit, Adresse, Art, Kategorie, Betrag, Priorität und Dauer unter dem eingetippten Namen;
 der Eintrag selbst wird dabei nicht angelegt. Beim nächsten neuen Eintrag schlägt das
 Textfeld die bekannten Namen vor, und sobald ein Name genau passt (Groß- und Kleinschreibung
 egal), sind die übrigen Felder ausgefüllt. Gibt es zu einem Namen keine Vorlage, springt der
@@ -216,6 +216,15 @@ erst auf das zurück, was man selbst eingetragen hatte, bevor die neue Vorlage g
 Bearbeiten eines bestehenden Eintrags passiert nichts davon. Die Vorlagen liegen in
 `entries.json` und werden in den Einstellungen unter „Vorlagen" gelöscht; derselbe Name
 ersetzt die alte Vorlage, statt eine zweite anzulegen.
+
+## Adresse am Eintrag
+
+Jeder Kalendereintrag kann eine Adresse tragen, frei formuliert („Bahnhofstraße 3, Leer").
+Im Eintragsfenster steht daneben der Knopf „Karte", in der Tagesliste ist die Adresse
+selbst der Kartenlink; beides öffnet Google Maps mit der Adresse als Suche, am Handy also
+direkt die Navigation. Der Klick auf die Adresse öffnet nicht das Eintragsfenster. Die
+Tagesmail hängt die Adresse hinter den Termin, die Suche findet Einträge auch über die
+Adresse, und Vorlagen merken sie sich mit.
 
 ## Beträge im Kalender
 
