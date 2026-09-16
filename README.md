@@ -203,6 +203,20 @@ angeklickte Vorkommen aus, ein Datumsfeld jeden anderen Tag, und jede Ausnahme l
 Haken. Die Serie selbst bleibt unangetastet; Startseite, Tagesmail und das nächste
 Vorkommen überspringen ausgelassene Tage genauso wie der Kalender.
 
+## Vorlagen: der Name füllt die Felder
+
+Was öfter, aber unregelmäßig ansteht (Zahnarzt, Chorprobe, die Miete an wechselnden
+Tagen), muss nicht jedes Mal neu ausgefüllt werden. Im Eintragsfenster merkt „Als Vorlage
+merken" Uhrzeit, Art, Kategorie, Betrag, Priorität und Dauer unter dem eingetippten Namen;
+der Eintrag selbst wird dabei nicht angelegt. Beim nächsten neuen Eintrag schlägt das
+Textfeld die bekannten Namen vor, und sobald ein Name genau passt (Groß- und Kleinschreibung
+egal), sind die übrigen Felder ausgefüllt. Gibt es zu einem Namen keine Vorlage, springt der
+jüngste Eintrag gleichen Namens ein. Wechselt man den Namen noch einmal, fallen die Felder
+erst auf das zurück, was man selbst eingetragen hatte, bevor die neue Vorlage greift. Beim
+Bearbeiten eines bestehenden Eintrags passiert nichts davon. Die Vorlagen liegen in
+`entries.json` und werden in den Einstellungen unter „Vorlagen" gelöscht; derselbe Name
+ersetzt die alte Vorlage, statt eine zweite anzulegen.
+
 ## Beträge im Kalender
 
 Jeder Kalendereintrag kann einen Betrag tragen, Ausgaben mit Minus, in deutscher

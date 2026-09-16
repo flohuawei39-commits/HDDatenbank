@@ -433,7 +433,7 @@ const ansichtWechseln = async (name) => {
   if (name === 'reime') await reimeLaden();
   if (eigen) { $('#eigen-suche').value = ''; await eigenLaden(); }
   if (name === 'suche') { bereicheFuellen(); $('#such-feld').focus(); }
-  if (name === 'einstellungen') { await datenLaden(); katZeichnen(); artZeichnen(); await finkatLaden(); ablageZeichnen(); await einstellungenLaden(); }
+  if (name === 'einstellungen') { await datenLaden(); katZeichnen(); artZeichnen(); await vorlagenZeichnen(); await finkatLaden(); ablageZeichnen(); await einstellungenLaden(); }
 };
 
 $$('.tab').forEach((tab) => tab.addEventListener('click', fangen(() => ansichtWechseln(tab.dataset.ansicht))));
@@ -1066,6 +1066,42 @@ $('#kat-anlegen').addEventListener('click', fangen(async () => {
   toast('Kategorie angelegt');
 }));
 
+// ---- Vorlagen verwalten ---------------------------------------------------
+
+const vorlagenZeichnen = async () => {
+  const ziel = $('#vorlagen-liste');
+  if (!ziel) return;
+  const { vorlagen } = await api('/api/vorlagen');
+  if (!vorlagen.length) {
+    ziel.innerHTML = '<p class="hinweis" style="margin:0">Noch keine — im Eintragsfenster „Als Vorlage merken" drücken.</p>';
+    return;
+  }
+  const artName = (id) => { const a = S.arten.find((x) => x.id === id); return a ? a.name : null; };
+  const katName = (id) => { const k = kategorie(id); return k ? k.name : null; };
+  ziel.innerHTML = vorlagen.map((v) => {
+    const teile = [
+      v.uhrzeit, artName(v.art), katName(v.kategorie),
+      v.betrag !== null && v.betrag !== undefined ? euro(v.betrag) : null,
+      v.prioritaet && v.prioritaet !== 'mittel' ? `Priorität ${v.prioritaet}` : null,
+      v.tage ? `${v.tage + 1} Tage` : null
+    ].filter(Boolean);
+    return `
+    <div class="kat-zeile vorlage-zeile-liste" data-id="${esc(v.id)}">
+      <span class="vorlage-name">${esc(v.name)}</span>
+      <span class="hinweis vorlage-felder">${esc(teile.join(' · ') || 'keine weiteren Felder')}</span>
+      <button class="knopf knopf-gefahr" data-loeschen>Löschen</button>
+    </div>`;
+  }).join('');
+};
+
+$('#vorlagen-liste').addEventListener('click', fangen(async (e) => {
+  const zeileEl = e.target.closest('.kat-zeile');
+  if (!zeileEl || !e.target.hasAttribute('data-loeschen')) return;
+  await del(`/api/vorlage?id=${encodeURIComponent(zeileEl.dataset.id)}`);
+  await vorlagenZeichnen();
+  toast('Vorlage gelöscht');
+}));
+
 // ---- Eintragsarten verwalten ----------------------------------------------
 
 const artZeichnen = () => {
@@ -1614,6 +1650,9 @@ document.addEventListener('change', fangen(async (e) => {
   if (feld) await neuFeldBehandeln(feld);
 }));
 
+// So steht der Betrag im Eingabefeld: deutsches Komma, zwei Nachkommastellen.
+const betragFeld = (n) => Number(n).toFixed(2).replace('.', ',');
+
 const eintragDialog = (vorgabe) => {
   const e = {
     id: null, datum: S.heute || heuteISO(), datumBis: null, uhrzeit: null, text: '', betrag: null,
@@ -1625,7 +1664,12 @@ const eintragDialog = (vorgabe) => {
   const inhalt = `
     <div class="dialog-feld">
       <label>Text</label>
-      <input class="feld" id="d-text" type="text" value="${esc(e.text)}" placeholder="Worum geht es?">
+      <input class="feld" id="d-text" type="text" value="${esc(e.text)}" placeholder="Worum geht es?" list="d-vorlagen" autocomplete="off">
+      <datalist id="d-vorlagen"></datalist>
+      <div class="vorlage-zeile">
+        <span class="hinweis vorlage-hinweis" id="d-vorlage-hinweis"></span>
+        <button type="button" class="knopf knopf-still" id="d-vorlage-merken" title="Uhrzeit, Art, Kategorie, Betrag, Priorität und Dauer unter diesem Namen merken">Als Vorlage merken</button>
+      </div>
     </div>
     <div class="dialog-paar">
       <div class="dialog-feld"><label>Datum</label><input class="feld" id="d-datum" type="date" value="${esc(e.datum)}"></div>
@@ -1639,7 +1683,7 @@ const eintragDialog = (vorgabe) => {
     </div>
     <div class="dialog-feld"><label>Betrag in € (optional, Ausgaben mit Minus)</label>
       <input class="feld" id="d-betrag" type="text" inputmode="decimal" placeholder="z. B. 12,50 oder -8"
-        value="${e.betrag === null || e.betrag === undefined ? '' : esc(String(e.betrag).replace('.', ','))}">
+        value="${e.betrag === null || e.betrag === undefined ? '' : esc(betragFeld(e.betrag))}">
     </div>
     <div class="dialog-feld"><label>Kategorie</label>
       <select class="feld" id="d-kat" data-neufeld="kat" data-vorher="${esc(e.kategorie || '')}">${neuOptionen('kat', e.kategorie)}</select>
@@ -1735,6 +1779,93 @@ const eintragDialog = (vorgabe) => {
   inhaltEl.querySelector('[data-wahl="wdh"]').addEventListener('click', () => {
     setTimeout(() => { $('#d-ausnahmen-block').hidden = !wahlWert('wdh'); }, 0);
   });
+
+  vorlagenAnbinden(e);
+};
+
+/* ---- Vorlagen im Eintragsfenster -----------------------------------------
+
+   Der Name fuellt die uebrigen Felder: aus einer gemerkten Vorlage oder,
+   wenn es keine gibt, aus dem juengsten Eintrag gleichen Namens. Das laeuft
+   nur bei neuen Eintraegen — wer einen bestehenden umbenennt, will nicht,
+   dass ihm dabei die Uhrzeit umgestellt wird. "Als Vorlage merken" sichert
+   die Felder unter dem Namen, ohne den Eintrag selbst anzulegen.           */
+
+const wahlSetzen = (name, wert) => {
+  const gruppe = $(`[data-wahl="${name}"]`);
+  if (!gruppe) return;
+  [...gruppe.querySelectorAll('[data-wert]')].forEach((b) => b.classList.toggle('aktiv', b.dataset.wert === wert));
+};
+
+const vorlagenAnbinden = (e) => {
+  const textEl = $('#d-text');
+  const hinweis = $('#d-vorlage-hinweis');
+  let namen = [];
+  const namenZeichnen = () => {
+    $('#d-vorlagen').innerHTML = namen.map((n) => `<option value="${esc(n)}"></option>`).join('');
+  };
+  api('/api/vorlagen').then((v) => { namen = v.namen || []; namenZeichnen(); }).catch(() => {});
+
+  let uebernommen = '';
+  let vorher = {};
+  const anwenden = async () => {
+    if (e.id) return;
+    const name = textEl.value.trim();
+    const schluessel = name.toLowerCase();
+    if (!name || schluessel === uebernommen) return;
+    if (!namen.some((n) => n.toLowerCase() === schluessel)) return;
+    const antwort = await api(`/api/vorlage?name=${encodeURIComponent(name)}&datum=${encodeURIComponent($('#d-datum').value)}`);
+    const v = antwort.vorlage;
+    if (!v) return;
+    uebernommen = schluessel;
+
+    /* Erst zurueck auf das, was vor der letzten Vorlage im Feld stand, dann
+       die neue anwenden. Sonst bleibt beim Wechsel von "Zahnarzt" zu "Chor"
+       die Zahnarzt-Uhrzeit stehen, nur weil der Chor keine hat. */
+    for (const [feld, wert] of Object.entries(vorher)) {
+      if (feld === 'prio') wahlSetzen('prio', wert); else $(feld).value = wert;
+    }
+    vorher = {
+      '#d-zeit': $('#d-zeit').value, '#d-bis': $('#d-bis').value, '#d-betrag': $('#d-betrag').value,
+      '#d-kat': $('#d-kat').value, '#d-art': $('#d-art').value, prio: wahlWert('prio')
+    };
+    if (v.uhrzeit) $('#d-zeit').value = v.uhrzeit;
+    if (v.datumBis) $('#d-bis').value = v.datumBis;
+    if (v.betrag !== null && v.betrag !== undefined) $('#d-betrag').value = betragFeld(v.betrag);
+    if (v.kategorie && $('#d-kat').querySelector(`option[value="${v.kategorie}"]`)) $('#d-kat').value = v.kategorie;
+    if (v.art && $('#d-art').querySelector(`option[value="${v.art}"]`)) $('#d-art').value = v.art;
+    $('#d-kat').dataset.vorher = $('#d-kat').value;
+    $('#d-art').dataset.vorher = $('#d-art').value;
+    if (v.prioritaet) wahlSetzen('prio', v.prioritaet);
+    hinweis.textContent = antwort.quelle === 'vorlage'
+      ? `Felder aus der Vorlage „${name}" übernommen.`
+      : `Felder aus dem letzten Eintrag „${name}" übernommen.`;
+  };
+  textEl.addEventListener('change', fangen(anwenden));
+  // Aus der Liste gewaehlt oder fertig getippt: sofort, nicht erst beim Verlassen des Felds.
+  textEl.addEventListener('input', () => {
+    const wert = textEl.value.trim().toLowerCase();
+    if (wert && namen.some((n) => n.toLowerCase() === wert)) fangen(anwenden)();
+  });
+
+  $('#d-vorlage-merken').addEventListener('click', fangen(async () => {
+    const name = textEl.value.trim();
+    if (!name) throw new Error('Für die Vorlage wird der Name gebraucht.');
+    const antwort = await post('/api/vorlage', {
+      name,
+      datum: $('#d-datum').value,
+      datumBis: $('#d-bis').value || null,
+      uhrzeit: $('#d-zeit').value || null,
+      betrag: $('#d-betrag').value,
+      kategorie: $('#d-kat').value && $('#d-kat').value !== NEU_WERT ? $('#d-kat').value : null,
+      art: $('#d-art').value && $('#d-art').value !== NEU_WERT ? $('#d-art').value : null,
+      prioritaet: wahlWert('prio')
+    });
+    if (!namen.some((n) => n.toLowerCase() === name.toLowerCase())) { namen.unshift(name); namenZeichnen(); }
+    uebernommen = name.toLowerCase();
+    hinweis.textContent = antwort.ersetzt ? `Vorlage „${name}" erneuert.` : `Als Vorlage „${name}" gemerkt.`;
+    toast(antwort.ersetzt ? 'Vorlage erneuert' : 'Vorlage gemerkt');
+  }));
 };
 
 const aufgabeDialog = (vorgabe) => {

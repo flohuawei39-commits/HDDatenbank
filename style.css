@@ -320,6 +320,11 @@ body.start-aktiv .app { padding-bottom: 16px; }
 .kal-pille-geld { opacity: .75; font-variant-numeric: tabular-nums; }
 .zeile-auslassen { font-size: 12px; opacity: .6; }
 .zeile-auslassen:hover { opacity: 1; }
+.vorlage-zeile { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.vorlage-hinweis { margin: 0; flex: 1; min-width: 0; }
+.vorlage-zeile-liste { flex-wrap: wrap; }
+.vorlage-name { font-weight: 600; }
+.vorlage-felder { margin: 0; flex: 1; min-width: 120px; }
 .ausnahmen-liste { display: flex; flex-wrap: wrap; gap: 6px; }
 .ausnahme-marke { display: inline-flex; align-items: center; gap: 4px; }
 .ausnahme-weg { background: none; border: none; color: var(--text-still); cursor: pointer; padding: 0 2px; font-size: 11px; }
