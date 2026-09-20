@@ -114,7 +114,11 @@ bleibt dabei unverändert stehen. Unter Einstellungen › Kategorien schreibt da
 „Einträge kopieren" alles, was an einer Kategorie hängt, in einen anderen Reiter.
 
 Das Dialogfenster lässt sich an der unteren rechten Ecke in beide Richtungen ziehen, die
-mehrzeiligen Felder darin ebenso.
+mehrzeiligen Felder darin ebenso. Für Texte und Zeilen öffnet es sich als **Blatt**: etwa so
+breit wie eine Word-Seite (880 Pixel), das Textfeld darin füllt die Breite und gut die halbe
+Bildschirmhöhe. Wer das Fenster zieht, bekommt diese Größe beim nächsten Öffnen wieder,
+getrennt gemerkt für Blatt und Formular, im Browser (`localStorage`), nicht in der Ablage.
+Am Telefon füllt das Fenster ohnehin den Schirm, dort greift keine gemerkte Größe.
 
 Wer ein Fenster mit Escape, über ✕ oder mit einem Klick daneben verlässt, verliert das
 Getippte nicht: der Stand bleibt als **Entwurf** liegen und steht beim nächsten Öffnen

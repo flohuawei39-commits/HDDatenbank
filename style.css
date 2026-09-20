@@ -500,6 +500,11 @@ body.start-aktiv .app { padding-bottom: 16px; }
   min-width: 320px;
   max-width: 96vw;
 }
+/* Das Blatt: so breit wie eine Word-Seite (21 cm), fuer Texte und Zeilen. */
+.dialog-karte-blatt {
+  width: min(880px, 100%);
+  max-height: 94vh;
+}
 .dialog-kopf { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dialog-inhalt { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 16px; }
 .dialog-fuss { display: flex; justify-content: space-between; gap: 8px; }
@@ -869,6 +874,8 @@ body.start-aktiv .app { padding-bottom: 16px; }
    liest sich ein Absatz nur, wenn er nicht umbricht. Breiter als die Karte
    geht nicht — dafuer laesst sich die Karte selbst ziehen. */
 .feld-hoch { min-height: 150px; font-family: inherit; line-height: 1.6; resize: both; max-width: 100%; }
+.feld-blatt { width: 100%; min-height: 55vh; font-size: 15px; line-height: 1.7; padding: 16px 18px; }
+.feld-blatt-kurz { min-height: 180px; }
 
 /* Ein Schieber je Gruppe, nicht je Zeile: der Behaelter umschliesst alle
    Zeilen einer Gruppe, damit sie beim Scrollen zusammenbleiben und die Spalten

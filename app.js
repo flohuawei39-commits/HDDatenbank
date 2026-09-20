@@ -1452,7 +1452,47 @@ const dialogStandSetzen = (stand) => {
   });
 };
 
-const dialogOeffnen = (titel, inhalt, speichern, loeschen) => {
+/* ---- Groesse des Fensters ---------------------------------------------------
+
+   Das Fenster gibt es in zwei Zuschnitten: schmal fuer Formulare, und als
+   "Blatt" fuer Texte — etwa so breit wie eine Word-Seite, damit lange Zeilen
+   nicht umbrechen und ein Text als Ganzes vor einem liegt. Wer das Fenster an
+   der Ecke zieht, bekommt diese Groesse beim naechsten Mal wieder; gemerkt
+   wird je Zuschnitt, im Browser, nicht in der Ablage.                        */
+
+const dialogKarte = () => $('#dialog .dialog-karte');
+let dialogZuschnitt = 'normal';
+const groesseSchluessel = () => `hdd-dialog-groesse-${dialogZuschnitt}`;
+
+const dialogGroesseHolen = () => {
+  const karte = dialogKarte();
+  karte.style.width = '';
+  karte.style.height = '';
+  // Am Telefon fuellt das Fenster den Schirm; eine gemerkte Groesse waere dort im Weg.
+  if (window.matchMedia('(max-width: 640px)').matches) return;
+  try {
+    const gemerkt = JSON.parse(localStorage.getItem(groesseSchluessel()) || 'null');
+    if (gemerkt && gemerkt.breite) karte.style.width = `${gemerkt.breite}px`;
+    if (gemerkt && gemerkt.hoehe) karte.style.height = `${gemerkt.hoehe}px`;
+  } catch (fehler) { /* ohne localStorage bleibt die Vorgabe */ }
+};
+
+const dialogGroesseMerken = () => {
+  const karte = dialogKarte();
+  // Der Browser schreibt beim Ziehen die Groesse in den style — nur dann gibt es was zu merken.
+  if (!karte.style.width && !karte.style.height) return;
+  try {
+    localStorage.setItem(groesseSchluessel(), JSON.stringify({
+      breite: karte.style.width ? Math.round(karte.getBoundingClientRect().width) : 0,
+      hoehe: karte.style.height ? Math.round(karte.getBoundingClientRect().height) : 0
+    }));
+  } catch (fehler) { /* dann eben nicht */ }
+};
+
+const dialogOeffnen = (titel, inhalt, speichern, loeschen, optionen = {}) => {
+  dialogZuschnitt = optionen.blatt ? 'blatt' : 'normal';
+  dialogKarte().classList.toggle('dialog-karte-blatt', dialogZuschnitt === 'blatt');
+  dialogGroesseHolen();
   $('#dialog-titel').textContent = titel;
   $('#dialog-inhalt').innerHTML = inhalt;
   $('#dialog').classList.remove('versteckt');
@@ -1487,6 +1527,7 @@ const dialogSchliessen = () => {
   dialogSchluessel = null;
   dialogAnfang = null;
 
+  dialogGroesseMerken();
   $('#dialog').classList.add('versteckt');
   $('#dialog-inhalt').innerHTML = '';
   dialogSpeichern = null;
@@ -3395,7 +3436,7 @@ const reimDialog = (gruppeId, vorgabe) => {
 const zeileDialog = (z) => {
   dialogOeffnen(z ? 'Zeile ändern' : 'Neue Zeile', `
     <label class="dialog-feld">Zeile
-      <textarea class="feld feld-hoch" data-zeilentext data-hinweis-quelle rows="4">${esc(z ? (z.inhalt || z.text) : '')}</textarea>
+      <textarea class="feld feld-hoch feld-blatt feld-blatt-kurz" data-zeilentext data-hinweis-quelle rows="6">${esc(z ? (z.inhalt || z.text) : '')}</textarea>
     </label>
     <p class="hinweis">Mehrere Zeilen sind erlaubt: jeder Umbruch ist eine eigene Zeile,
       die Silben stehen später gesammelt unter dem Absatz.</p>
@@ -3407,7 +3448,7 @@ const zeileDialog = (z) => {
       id: z ? z.id : null,
       text: $('#dialog-inhalt').querySelector('[data-zeilentext]').value,
       kategorien: katGewaehlt()
-    });
+    }, { blatt: true });
     dialogSchliessen();
     await reimeLaden();
     toast('Zeile gesichert');
@@ -3426,7 +3467,7 @@ const textDialog = (t) => {
       <input class="feld" data-titel type="text" value="${esc(t ? t.titel : '')}">
     </label>
     <label class="dialog-feld">Text
-      <textarea class="feld feld-hoch" data-inhalt data-hinweis-quelle rows="10">${esc(t ? t.zeilen.map((z) => z.text).join('\n') : '')}</textarea>
+      <textarea class="feld feld-hoch feld-blatt" data-inhalt data-hinweis-quelle rows="24">${esc(t ? t.zeilen.map((z) => z.text).join('\n') : '')}</textarea>
     </label>
     ${katKaestchen(t ? t.kategorien : [])}
     ${t ? kopierFeld('texte', t.id) : ''}`,
@@ -3447,7 +3488,7 @@ const textDialog = (t) => {
     dialogSchliessen();
     await reimeLaden();
     toast('Text gelöscht');
-  } : null);
+  } : null, { blatt: true });
 };
 
 /**
